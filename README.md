@@ -58,6 +58,39 @@ When a gate opens its file, any `reserved` row older than the recovery window (d
 
 `src/server.ts` is a thin `node:http` wrapper (`/decide`, `/outcome`, `/reconcile`, `/decisions/<receipt_id>`, `/reservations/<reservation_id>`, `/budget?grant_id=`, `/gate-key`) bound to 127.0.0.1 with no caller authentication.
 
+## Optional: require an independent verdict
+
+A store can make a permit also depend on an independent signed verdict on the exact request (#199: "independent pre-payment
+verdict bound to merchant, order, amount, currency and agent"). Off by default; when it is off the gate and its records are
+unchanged.
+
+```ts
+Gate.open({ ...config, requireVerdict: { verifierPubkey: '<reviewer BIP-340 x-only key>', proceedOn: ['approve'], maxAgeMs: 600_000 } })
+gate.decide({ request, delegation, intent, verdict })   // verdict: the reviewer's signed NIP-01 event
+```
+
+The check is offline, in `src/verdict.ts` (BIP-340 verification over secp256k1 with no dependency). A verdict allows the
+permit only if all of these hold, otherwise the refusal names the first failure:
+
+| check | refusal |
+| --- | --- |
+| a verdict was supplied | `verdict_missing` |
+| it is signed by the configured reviewer key | `verdict_untrusted_key` |
+| the NIP-01 id recomputes and the BIP-340 signature verifies | `verdict_invalid` |
+| its `action_binding_args_hash` is `"sha256:" + action_ref`, the same JCS digest of the request this gate uses | `verdict_request_mismatch` |
+| its `action_binding_agent_id` is the request's `agent_id` | `verdict_agent_mismatch` |
+| its verdict is in `proceedOn` (default `approve`) | `verdict_not_allowed` |
+| its `verified_at` is within `maxAgeMs` (default 10 minutes) and not ahead of the clock | `verdict_stale`, `verdict_from_future` |
+
+A permit records the verdict's event id in `policy_input.verdict_event_id`. `test/11-verdict.test.ts` covers each refusal and
+includes a real verdict from invinoveritas `/review` (`test/vectors/invinoveritas-verdict-b2cd036a.json`), whose
+`action_binding_args_hash` equals this gate's `requestDigest()` for the same request. `npm run mutation` removes each of the
+eight checks in turn.
+
+A passing verdict establishes only that the configured reviewer signed a verdict in `proceedOn` for exactly this request and
+agent, recently. It does not establish that the verdict is right, that the reviewer saw more than the request, or anything about
+payment or fulfilment.
+
 ## Run it
 
 Needs Node 24. Node runs the TypeScript directly, there is no build step, and state lives in the built in `node:sqlite`. The only runtime dependency is `agent-passport-system` pinned to 7.2.1. TypeScript 5.9.3 and `@types/node` 24.10.1 are pinned development dependencies used only by `npm run typecheck`.

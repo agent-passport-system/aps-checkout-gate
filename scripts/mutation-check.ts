@@ -15,6 +15,39 @@ interface Mutant { name: string; edits: Edit[] }
 const GATE = 'src/gate.ts'
 
 const mutants: Mutant[] = [
+  // Optional required evidence: an independent signed verdict on the request (src/verdict.ts, test/11).
+  {
+    name: '(V1) verdict requirement ignored: a configured gate permits without one',
+    edits: [{ file: GATE, find: 'if (this.requireVerdict !== undefined) {', replace: 'if (false /* MUTANT (V1) */) {' }],
+  },
+  {
+    name: '(V2) request binding removed: a verdict on any request passes',
+    edits: [{ file: 'src/verdict.ts', find: "if (c.action_binding_args_hash !== 'sha256:' + actionRef) {", replace: 'if (false /* MUTANT (V2) */) {' }],
+  },
+  {
+    name: '(V3) agent binding removed',
+    edits: [{ file: 'src/verdict.ts', find: 'if (c.action_binding_agent_id !== req.agent_id) {', replace: 'if (false /* MUTANT (V3) */) {' }],
+  },
+  {
+    name: '(V4) proceed_on removed: any verdict, even reject, allows a permit',
+    edits: [{ file: 'src/verdict.ts', find: "if (typeof c.verdict !== 'string' || !allowed.includes(c.verdict)) {", replace: 'if (false /* MUTANT (V4) */) {' }],
+  },
+  {
+    name: '(V5) signature check removed',
+    edits: [{ file: 'src/verdict.ts', find: "if (!schnorrVerify(Buffer.from(ev.id, 'hex'), Buffer.from(ev.pubkey, 'hex'), Buffer.from(ev.sig, 'hex'))) {", replace: 'if (false /* MUTANT (V5) */) {' }],
+  },
+  {
+    name: '(V6) event id recompute removed: edited content keeps a valid signature over the old id',
+    edits: [{ file: 'src/verdict.ts', find: 'if (eventId(ev) !== ev.id) return', replace: 'if (false /* MUTANT (V6) */) return' }],
+  },
+  {
+    name: '(V7) reviewer key check removed: any key may sign',
+    edits: [{ file: 'src/verdict.ts', find: 'if (ev.pubkey !== cfg.verifierPubkey.toLowerCase()) return', replace: 'if (false /* MUTANT (V7) */) return' }],
+  },
+  {
+    name: '(V8) verdict age check removed',
+    edits: [{ file: 'src/verdict.ts', find: '} else if (now.getTime() - verifiedMs > (cfg.maxAgeMs ?? DEFAULT_VERDICT_MAX_AGE_MS)) {', replace: '} else if (false /* MUTANT (V8) */) {' }],
+  },
   // The six properties spec item 8 names.
   {
     name: '(1) IMMEDIATE removed: transactions start deferred',
