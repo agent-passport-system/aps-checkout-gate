@@ -1,32 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { AuthorityDelegationV1 } from 'agent-passport-system'
-import { verifyDecision } from '../src/decision.ts'
-import type { Gate } from '../src/gate.ts'
+import { UNVERIFIED_INTENT, UNVERIFIED_INTENT_REF } from '../src/decision.ts'
 import { makeParty } from '../src/parties.ts'
-import type { PurchaseRequest } from '../src/request.ts'
+import { requestDigest } from '../src/request.ts'
 import { issueGrant, purchaseGrant } from '../src/delegation.ts'
-import { MERCHANT, world } from './helpers.ts'
-import type { World } from './helpers.ts'
-
-/** Each case first shows a control request that the same gate permits, then
- *  changes one thing and expects a signed refusal with no reservation. */
-function expectRefusal(w: World, gate: Gate, input: Parameters<Gate['decide']>[0], reason: string) {
-  const { record } = gate.decide(input)
-  assert.equal(record.verdict, 'refuse', `expected a refusal for ${reason}, got ${record.verdict}`)
-  assert.equal(record.reason, reason, record.detail.join(' | '))
-  assert.equal(record.reservation_id, null)
-  assert.deepEqual(verifyDecision(record, w.gateParty.publicKey), { valid: true, problems: [] })
-  const req = input.request as PurchaseRequest
-  assert.equal(gate.reservationForRequest(req.request_id), undefined, 'a refusal must not reserve')
-  assert.deepEqual(gate.decisionsForRequest(req.request_id), [record], 'the refusal is stored')
-  return record
-}
-
-function control(w: World, gate: Gate, grant: AuthorityDelegationV1) {
-  const { record } = gate.decide(w.input(w.request({ amount_minor: 100 }), grant))
-  assert.equal(record.verdict, 'permit', `control was refused: ${record.detail.join(' | ')}`)
-}
+import { MERCHANT, control, expectRefusal, world } from './helpers.ts'
 
 test('5. expired grant is refused', t => {
   const w = world(); t.after(() => w.cleanup())
@@ -70,7 +48,7 @@ test('5. amount over the per-request limit is refused', t => {
   const gate = w.open()
   const grant = w.grant({ per_action_minor: 5000, cumulative_minor: 20_000 })
   control(w, gate, grant)
-  const ok = gate.decide(w.input(w.request({ amount_minor: 5000 }), grant)).record
+  const ok = gate.decide(w.input(w.request({ amount_minor: 5000 }), grant))
   assert.equal(ok.verdict, 'permit', 'exactly the per-request limit is allowed')
   expectRefusal(w, gate, w.input(w.request({ amount_minor: 5001 }), grant), 'per_request_limit_exceeded')
 })
@@ -108,4 +86,22 @@ test('5. other refusals: currency, grant subject, untrusted principal, tampered 
   expectRefusal(w, gate, w.input(w.request(), raised), 'delegation_invalid')
   expectRefusal(w, gate, w.input(w.request({ amount_minor: 10.5 }), grant), 'malformed_request')
   expectRefusal(w, gate, w.input(w.request({ amount_minor: '3000' as never }), grant), 'malformed_request')
+})
+
+test('5. a refusal for an intent that does not verify names no agent and no intent', t => {
+  const w = world(); t.after(() => w.cleanup())
+  const gate = w.open()
+  const grant = w.grant()
+  control(w, gate, grant)
+  // Signed by a key the directory does not hold, under agent A's name.
+  const impostor = { ...makeParty('did:example:impostor', 'agent'), id: w.agent.id }
+  const req = w.request()
+  const input = w.input(req, grant, impostor)
+  const r = expectRefusal(w, gate, input, 'intent_invalid')
+  assert.equal(r.record.receipt.subject_agent, UNVERIFIED_INTENT)
+  assert.equal(r.record.receipt.prev, UNVERIFIED_INTENT_REF)
+  assert.notEqual(r.record.receipt.prev, input.intent.receipt_id)
+  assert.equal(r.record.evidence.policy_input.intent_receipt_id, null)
+  // The action_ref still binds the exact request the gate refused.
+  assert.equal(r.record.receipt.action_ref, requestDigest(req))
 })

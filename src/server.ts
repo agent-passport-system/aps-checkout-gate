@@ -1,10 +1,10 @@
 // Thin node:http wrapper over the gate core. Binds to 127.0.0.1 only and has
 // no caller authentication. It is for local experiments, not exposure.
 //
-//   POST /decide     {request, delegation, intent}            -> {decision, replay}
+//   POST /decide     {request, delegation, intent}            -> {decision, verdict, reason, reservation_id, replay}
 //   POST /outcome    {reservation_id, outcome, confirmation?}  -> OutcomeResult
 //   POST /reconcile  {reservation_id, outcome, confirmation}   -> OutcomeResult
-//   GET  /decisions/<decision_id>                             -> decision record
+//   GET  /decisions/<receipt_id>                              -> {receipt, evidence}
 //   GET  /gate-key                                            -> {gate_id, key_id, public_key}
 //
 // Run: node src/server.ts <config.json>
@@ -56,8 +56,8 @@ export function createGateServer(gate: Gate): Server {
       try { body = await readBody(req) } catch (e) { return send(res, 400, { error: (e as Error).message }) }
       if (!isRecord(body)) return send(res, 400, { error: 'body is not a JSON object' })
       if (url.pathname === '/decide') {
-        const { record, replay } = gate.decide(body as never)
-        return send(res, 200, { decision: record, replay })
+        const r = gate.decide(body as never)
+        return send(res, 200, { decision: r.record, verdict: r.verdict, reason: r.reason, reservation_id: r.reservation_id, replay: r.replay })
       }
       if (url.pathname === '/outcome') {
         const r = gate.reportOutcome(String(body.reservation_id), body.outcome as never, body.confirmation as never)

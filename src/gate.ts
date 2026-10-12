@@ -2,8 +2,14 @@
 //
 // decide() verifies the grant and the intent with the SDK, then, in one
 // IMMEDIATE sqlite transaction, applies idempotency, checks the budget and
-// inserts the reservation, signs the decision and stores it. Refusals are
-// signed and stored too.
+// inserts the reservation, signs the decision as an aps:policy-decision:v1
+// receipt and stores it. Refusals are signed and stored too.
+//
+// Only a permit becomes the idempotency answer for its request_id. A refusal
+// is logged, and the same request_id with the same content is evaluated again
+// later, so a budget_exceeded refusal can become a permit once budget is
+// released. Different content under a request_id that holds a permit is
+// refused as request_id_conflict.
 //
 // reportOutcome() and reconcile() move a reservation through its states:
 //   reserved   --placed-->               committed
@@ -26,12 +32,12 @@ import { DatabaseSync } from 'node:sqlite'
 import type { StatementSync } from 'node:sqlite'
 import { canonicalizeJCS, scopeGrantCovers, verifyAuthorityDelegationChain, verifyReceiptV1 } from 'agent-passport-system'
 import type { AuthorityDelegationV1, AuthorityValidationResult, ReceiptV1, RevocationResolution } from 'agent-passport-system'
-import { newDecisionId, signDecision } from './decision.ts'
-import type { DecisionBody, DecisionRecord } from './decision.ts'
+import { CONTEXT_PROFILE, UNCANONICAL_REQUEST_REF, UNVERIFIED_INTENT, UNVERIFIED_INTENT_REF, issueDecision, reasonOf, reservationOf, verdictOf } from './decision.ts'
+import type { DecisionEvidence, DecisionRecord, Verdict } from './decision.ts'
 import { purchaseGrant, spendUnit } from './delegation.ts'
 import { keyId, keyOf } from './parties.ts'
 import type { Party, TrustedKeys } from './parties.ts'
-import { isRecord, requestDigest, requestShapeProblems, sha256Hex } from './request.ts'
+import { isRecord, itemsAmountCheck, requestDigest, requestShapeProblems, sha256Hex } from './request.ts'
 import type { PurchaseRequest } from './request.ts'
 
 export interface DecideInput {
@@ -42,9 +48,15 @@ export interface DecideInput {
 
 export interface DecideResult {
   record: DecisionRecord
-  /** True when this is the stored decision for an earlier identical request. */
+  verdict: Verdict
+  reason: string
+  reservation_id: string | null
+  /** True when this is the stored permit for an earlier identical request. */
   replay: boolean
 }
+
+export const DEFAULT_INTENT_MAX_AGE_MS = 5 * 60_000
+export const DEFAULT_INTENT_MAX_SKEW_MS = 30_000
 
 export type Outcome = 'placed' | 'failed' | 'unknown' | 'timeout'
 export type ReservationState = 'reserved' | 'committed' | 'released' | 'unresolved'
@@ -76,13 +88,23 @@ export interface GateConfig {
    *  lock shows up as an overspend instead of depending on scheduler luck.
    *  Zero in normal use. */
   raceWindowMs?: number
+  /** An intent issued longer ago than this is refused as intent_stale. Default 5 minutes. */
+  intentMaxAgeMs?: number
+  /** An intent issued further ahead of the gate clock than this is refused as intent_from_future. Default 30 seconds. */
+  intentMaxSkewMs?: number
 }
 
 export const DEFAULT_RECOVERY_WINDOW_MS = 15 * 60_000
 
 interface Problem { code: string; message: string }
 
+/** The decision evidence while it is being built, plus what the receipt cites. */
+type Facts = DecisionEvidence & {
+  _cite: { action_ref: string; prev: string; subject_agent: string; delegation_ref: string }
+}
+
 const SCHEMA = `
+-- One row per request_id that holds a permit. Refusals are not idempotency answers.
 CREATE TABLE IF NOT EXISTS requests (
   request_id TEXT PRIMARY KEY,
   request_digest TEXT NOT NULL,
@@ -142,6 +164,8 @@ export class Gate {
   readonly directory: TrustedKeys
   readonly recoveryWindowMs: number
   readonly raceWindowMs: number
+  readonly intentMaxAgeMs: number
+  readonly intentMaxSkewMs: number
   /** Reservation ids that startup recovery moved to 'unresolved'. */
   recovered: string[] = []
   private readonly now: () => Date
@@ -152,6 +176,8 @@ export class Gate {
     this.directory = c.directory
     this.recoveryWindowMs = c.recoveryWindowMs ?? DEFAULT_RECOVERY_WINDOW_MS
     this.raceWindowMs = c.raceWindowMs ?? 0
+    this.intentMaxAgeMs = c.intentMaxAgeMs ?? DEFAULT_INTENT_MAX_AGE_MS
+    this.intentMaxSkewMs = c.intentMaxSkewMs ?? DEFAULT_INTENT_MAX_SKEW_MS
     this.now = c.now ?? (() => new Date())
     this.db = new DatabaseSync(c.dbPath)
     this.db.exec('PRAGMA busy_timeout = 20000')
@@ -163,7 +189,9 @@ export class Gate {
       getRequest: p('SELECT request_digest, decision_id FROM requests WHERE request_id = ?'),
       putRequest: p('INSERT INTO requests (request_id, request_digest, decision_id) VALUES (?, ?, ?)'),
       getDecision: p('SELECT record FROM decisions WHERE decision_id = ?'),
-      putDecision: p('INSERT INTO decisions (decision_id, request_id, verdict, reason, record, decided_at) VALUES (?, ?, ?, ?, ?, ?)'),
+      // Receipts are deterministic: the same inputs at the same millisecond give
+      // the same receipt_id and the same bytes, so a repeat is stored once.
+      putDecision: p('INSERT OR IGNORE INTO decisions (decision_id, request_id, verdict, reason, record, decided_at) VALUES (?, ?, ?, ?, ?, ?)'),
       decisionsFor: p('SELECT record FROM decisions WHERE request_id = ? ORDER BY rowid'),
       held: p(`SELECT COALESCE(SUM(amount_minor), 0) AS s FROM reservations
                WHERE grant_id = ? AND state IN ('reserved', 'committed', 'unresolved')`),
@@ -230,38 +258,43 @@ export class Gate {
       snap = structuredClone({ request: input?.request, delegation: input?.delegation, intent: input?.intent })
     } catch (e) {
       const msg = `input could not be copied for checking: ${e instanceof Error ? e.message : String(e)}`
-      return this.tx(() => ({ record: this.store(this.refusal(null, null, null, [{ code: 'malformed_request', message: msg }], at)), replay: false }))
+      const facts = this.facts(UNCANONICAL_REQUEST_REF, null, null, null, null)
+      return this.tx(() => this.result(this.store(this.deny(facts, [{ code: 'malformed_request', message: msg }], at)), false))
     }
     const grantId = isRecord(snap.delegation) && typeof snap.delegation.delegation_id === 'string' ? snap.delegation.delegation_id : null
+    const iv = this.verifyIntent(snap.intent)
 
     const shape = requestShapeProblems(snap.request)
     if (shape.length > 0) {
       const rid = isRecord(snap.request) && typeof snap.request.request_id === 'string' ? snap.request.request_id : null
       let digest: string | null = null
       try { digest = sha256Hex(canonicalizeJCS(snap.request)) } catch { digest = null }
+      const facts = this.facts(digest ?? UNCANONICAL_REQUEST_REF, rid, digest, grantId, iv.valid ? snap.intent as ReceiptV1 : null)
       const problems = shape.map(message => ({ code: 'malformed_request', message }))
-      return this.tx(() => ({ record: this.store(this.refusal(rid, digest, grantId, problems, at)), replay: false }))
+      return this.tx(() => this.result(this.store(this.deny(facts, problems, at)), false))
     }
     const request = snap.request as PurchaseRequest
     const digest = requestDigest(request)
+    const facts = this.facts(digest, request.request_id, digest, grantId, iv.valid ? snap.intent as ReceiptV1 : null)
 
     return this.tx(() => {
-      // Idempotency: one decision per request_id. Identical content gets the
-      // stored decision back. Different content under the same id is refused.
+      // Idempotency. Only permits are stored as answers. Identical content gets
+      // the stored permit back. Different content under that id is refused.
       const prior = this.q.getRequest.get(request.request_id) as { request_digest: string; decision_id: string } | undefined
       if (prior !== undefined) {
-        if (prior.request_digest === digest) return { record: this.loadDecision(prior.decision_id), replay: true }
-        const conflict = [{ code: 'request_id_conflict', message: 'request_id was already decided for different request content' }]
-        return { record: this.store(this.refusal(request.request_id, digest, grantId, conflict, at)), replay: false }
+        if (prior.request_digest === digest) return this.result(this.loadDecision(prior.decision_id), true)
+        const conflict = [{ code: 'request_id_conflict', message: 'request_id already holds a permit for different request content' }]
+        return this.result(this.store(this.deny(facts, conflict, at)), false)
       }
 
-      const problems = this.authorize(request, digest, snap.delegation, snap.intent, now)
+      const problems = this.authorize(request, digest, snap.delegation, snap.intent, iv, now, facts)
       let reservationId: string | null = null
       if (problems.length === 0) {
         const d = snap.delegation as AuthorityDelegationV1
         const spend = d.authority.spend as { mode: 'bounded'; unit: string; cumulative: string }
         const limit = BigInt(spend.cumulative)
         const held = (this.q.held.get(d.delegation_id) as { s: bigint }).s
+        facts.authority_state.held_minor_before = held.toString()
         this.raceWindow()
         const amount = BigInt(request.amount_minor)
         if (held + amount > limit) {
@@ -272,15 +305,30 @@ export class Gate {
         }
       }
       const record = reservationId !== null
-        ? this.sign({ verdict: 'permit', reason: 'permitted', detail: [], request_id: request.request_id, request_digest: digest, grant_id: grantId, reservation_id: reservationId }, at)
-        : this.refusal(request.request_id, digest, grantId, problems, at)
-      this.store(record, digest)
-      return { record, replay: false }
+        ? this.permit(facts, reservationId, snap.delegation as AuthorityDelegationV1, now)
+        : this.deny(facts, problems, at)
+      // A permit becomes the request_id's answer. A refusal is only logged.
+      this.store(record, reservationId !== null ? digest : undefined)
+      return this.result(record, false)
     })
   }
 
-  /** Grant and intent checks. Returns every problem found, in check order. */
-  private authorize(request: PurchaseRequest, digest: string, delegation: unknown, intent: unknown, now: Date): Problem[] {
+  private verifyIntent(intent: unknown): { valid: boolean; status: string; errors: string[] } {
+    if (!isRecord(intent)) return { valid: false, status: 'invalid', errors: ['intent is not an object'] }
+    try {
+      const r = verifyReceiptV1(intent as unknown as ReceiptV1, signer => keyOf(this.directory, signer, 'agent'), { expectedReceiptType: 'aps:action-intent:v1' })
+      return { valid: r.valid, status: r.status, errors: r.errors }
+    } catch (e) {
+      return { valid: false, status: 'invalid', errors: [e instanceof Error ? e.message : String(e)] }
+    }
+  }
+
+  /** Grant, items and intent checks. Returns every problem found, in check
+   *  order. Fills the grant's spend facts into the evidence. */
+  private authorize(
+    request: PurchaseRequest, digest: string, delegation: unknown, intent: unknown,
+    iv: { valid: boolean; status: string; errors: string[] }, now: Date, facts: DecisionEvidence,
+  ): Problem[] {
     const problems: Problem[] = []
 
     // 1. The grant: signature, chain, trust root, validity time and revocation,
@@ -314,31 +362,43 @@ export class Gate {
       const spend = d.authority.spend
       if (spend.mode !== 'bounded') {
         problems.push({ code: 'no_spend_limit', message: 'the grant has an unbounded spend facet, and this gate requires a limit' })
-      } else if (spend.unit !== spendUnit(request.currency)) {
-        problems.push({ code: 'currency_mismatch', message: `the grant is in ${spend.unit}, the request in ${spendUnit(request.currency)}` })
-      } else if (BigInt(request.amount_minor) > BigInt(spend.per_action)) {
-        problems.push({ code: 'per_request_limit_exceeded', message: `amount ${request.amount_minor} exceeds the per-request limit ${spend.per_action} ${spend.unit}` })
+      } else {
+        facts.authority_state.spend_unit = spend.unit
+        facts.authority_state.cumulative_minor = spend.cumulative
+        if (spend.unit !== spendUnit(request.currency)) {
+          problems.push({ code: 'currency_mismatch', message: `the grant is in ${spend.unit}, the request in ${spendUnit(request.currency)}` })
+        } else if (BigInt(request.amount_minor) > BigInt(spend.per_action)) {
+          problems.push({ code: 'per_request_limit_exceeded', message: `amount ${request.amount_minor} exceeds the per-request limit ${spend.per_action} ${spend.unit}` })
+        }
       }
     }
 
-    // 4. The intent: signed by the delegated agent, over exactly this request,
-    // naming this grant.
+    // 4. Line items. Priced items must sum to the amount. Unpriced items leave
+    // the amount unchecked, and the evidence says so.
+    const items = itemsAmountCheck(request)
+    facts.policy_input.items_priced = items.priced
+    if (items.problem !== undefined) problems.push({ code: 'items_amount_mismatch', message: items.problem })
+
+    // 5. The intent: signed by the delegated agent, fresh, over exactly this
+    // request, naming this grant.
     if (!isRecord(intent)) {
       problems.push({ code: 'intent_invalid', message: 'intent is not an object' })
       return problems
     }
-    let iv: { valid: boolean; status: string; errors: string[] }
-    try {
-      iv = verifyReceiptV1(intent as unknown as ReceiptV1, signer => keyOf(this.directory, signer, 'agent'))
-    } catch (e) {
-      iv = { valid: false, status: 'invalid', errors: [e instanceof Error ? e.message : String(e)] }
-    }
     if (!iv.valid) problems.push({ code: 'intent_invalid', message: `intent receipt ${iv.status}: ${iv.errors.join(' | ')}` })
-    if (intent.receipt_type !== 'aps:action-intent:v1') problems.push({ code: 'intent_invalid', message: 'intent is not an aps:action-intent:v1 receipt' })
     const signers = Array.isArray(intent.signatures) ? intent.signatures.map(s => (isRecord(s) ? s.signer : undefined)) : []
     if (intent.issuer !== request.agent_id || intent.subject_agent !== request.agent_id ||
       signers.length === 0 || !signers.every(s => s === request.agent_id)) {
       problems.push({ code: 'intent_signer_mismatch', message: 'the intent is not issued and signed by the requesting agent alone' })
+    }
+    if (iv.valid) {
+      // issued_at is signed and, once the receipt verifies, exact UTC milliseconds.
+      const issued = Date.parse(intent.issued_at as string)
+      if (now.getTime() - issued > this.intentMaxAgeMs) {
+        problems.push({ code: 'intent_stale', message: `intent issued ${now.getTime() - issued} ms ago, the limit is ${this.intentMaxAgeMs} ms` })
+      } else if (issued - now.getTime() > this.intentMaxSkewMs) {
+        problems.push({ code: 'intent_from_future', message: `intent issued ${issued - now.getTime()} ms ahead of the gate clock, the limit is ${this.intentMaxSkewMs} ms` })
+      }
     }
     if (intent.action_ref !== digest) problems.push({ code: 'intent_request_mismatch', message: 'the intent does not commit to this exact request' })
     if (!isRecord(delegation) || intent.delegation_ref !== delegation.delegation_id) {
@@ -351,35 +411,63 @@ export class Gate {
     return this.q.revoked.get(delegationId) === undefined ? 'active' : 'revoked'
   }
 
-  private sign(b: Omit<DecisionBody, 'profile' | 'decision_id' | 'gate_id' | 'gate_key_id' | 'decided_at'>, at: string): DecisionRecord {
-    return signDecision({
-      profile: 'aps-checkout-gate/decision-v1',
-      decision_id: newDecisionId(),
-      ...b,
-      gate_id: this.gate.id,
-      gate_key_id: this.keyId,
-      decided_at: at,
-    }, this.gate.privateKey)
+  /** The decision evidence before the verdict is known. The intent is cited
+   *  only when its signature verified. Otherwise the receipt names no agent
+   *  and no intent, as in noncommercial-access-demo. */
+  private facts(actionRef: string, requestId: string | null, digest: string | null, grantId: string | null, verifiedIntent: ReceiptV1 | null): Facts {
+    return {
+      _cite: {
+        action_ref: actionRef,
+        prev: verifiedIntent?.receipt_id ?? UNVERIFIED_INTENT_REF,
+        subject_agent: verifiedIntent?.subject_agent ?? UNVERIFIED_INTENT,
+        delegation_ref: grantId ?? 'no-delegation',
+      },
+      authority_state: { grant_id: grantId, spend_unit: null, cumulative_minor: null, held_minor_before: null },
+      policy_input: { request_id: requestId, request_digest: digest, intent_receipt_id: verifiedIntent?.receipt_id ?? null, items_priced: null },
+      decision_context: { profile: CONTEXT_PROFILE, reason: '', reasons: [], reservation_id: null, gate_id: this.gate.id },
+      decision_output: { profile: 'aps-core-decision-output-v1', verdict: 'deny', effective_authority_ref: null, constraints: [], valid_until: null },
+    }
   }
 
-  private refusal(requestId: string | null, digest: string | null, grantId: string | null, problems: Problem[], at: string): DecisionRecord {
-    return this.sign({
-      verdict: 'refuse',
+  private issue(f: Facts, at: string): DecisionRecord {
+    const { _cite, ...evidence } = f
+    return issueDecision(this.gate, { ..._cite, issued_at: at, evidence })
+  }
+
+  private permit(f: Facts, reservationId: string, d: AuthorityDelegationV1, now: Date): DecisionRecord {
+    f.decision_context = { ...f.decision_context, reason: 'permitted', reasons: [], reservation_id: reservationId }
+    f.decision_output = {
+      profile: 'aps-core-decision-output-v1',
+      verdict: 'permit',
+      // The grant's own digest: delegation_id is "sha256:<hex>".
+      effective_authority_ref: d.delegation_id.replace(/^sha256:/, ''),
+      constraints: [],
+      // After this, startup recovery may move the reservation to unresolved.
+      valid_until: new Date(now.getTime() + Math.max(this.recoveryWindowMs, 1)).toISOString(),
+    }
+    return this.issue(f, now.toISOString())
+  }
+
+  private deny(f: Facts, problems: Problem[], at: string): DecisionRecord {
+    f.decision_context = {
+      ...f.decision_context,
       reason: problems[0]?.code ?? 'refused',
-      detail: problems.map(p => `${p.code}: ${p.message}`),
-      request_id: requestId,
-      request_digest: digest,
-      grant_id: grantId,
+      reasons: problems.map(p => `${p.code}: ${p.message}`),
       reservation_id: null,
-    }, at)
+    }
+    return this.issue(f, at)
   }
 
-  /** Stores a decision. With a digest, it also becomes the request_id's
-   *  idempotency answer. Without one (conflicts, malformed input) it is kept
-   *  in the decision log only. */
+  private result(record: DecisionRecord, replay: boolean): DecideResult {
+    return { record, verdict: verdictOf(record), reason: reasonOf(record), reservation_id: reservationOf(record), replay }
+  }
+
+  /** Stores a decision in the log. With a digest it also becomes the
+   *  request_id's idempotency answer, which only a permit does. */
   private store(record: DecisionRecord, digest?: string): DecisionRecord {
-    this.q.putDecision.run(record.decision_id, record.request_id, record.verdict, record.reason, JSON.stringify(record), record.decided_at)
-    if (digest !== undefined && record.request_id !== null) this.q.putRequest.run(record.request_id, digest, record.decision_id)
+    const rid = record.evidence.policy_input.request_id
+    this.q.putDecision.run(record.receipt.receipt_id, rid, verdictOf(record), reasonOf(record), JSON.stringify(record), record.receipt.issued_at)
+    if (digest !== undefined && rid !== null) this.q.putRequest.run(rid, digest, record.receipt.receipt_id)
     return record
   }
 

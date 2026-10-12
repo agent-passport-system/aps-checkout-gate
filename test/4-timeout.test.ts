@@ -8,7 +8,7 @@ for (const outcome of ['timeout', 'unknown'] as const) {
     t.after(() => w.cleanup())
     const gate = w.open()
     const grant = w.grant({ per_action_minor: 10_000, cumulative_minor: 10_000 })
-    const first = gate.decide(w.input(w.request({ amount_minor: 6000 }), grant)).record
+    const first = gate.decide(w.input(w.request({ amount_minor: 6000 }), grant))
     assert.equal(first.verdict, 'permit')
     const rid = first.reservation_id!
 
@@ -16,8 +16,8 @@ for (const outcome of ['timeout', 'unknown'] as const) {
     assert.equal(gate.budget(grant.delegation_id).held, '6000')
 
     // Budget is held: 6000 + 5000 is over 10000.
-    const blocked = gate.decide(w.input(w.request({ amount_minor: 5000 }), grant)).record
-    assert.equal(blocked.verdict, 'refuse')
+    const blocked = gate.decide(w.input(w.request({ amount_minor: 5000 }), grant))
+    assert.equal(blocked.verdict, 'deny')
     assert.equal(blocked.reason, 'budget_exceeded')
 
     // Time passing releases nothing.
@@ -42,11 +42,11 @@ test('4b. budget freed by reconcile can be reserved again', t => {
   t.after(() => w.cleanup())
   const gate = w.open()
   const grant = w.grant({ per_action_minor: 10_000, cumulative_minor: 10_000 })
-  const rid = gate.decide(w.input(w.request({ amount_minor: 6000 }), grant)).record.reservation_id!
+  const rid = gate.decide(w.input(w.request({ amount_minor: 6000 }), grant)).reservation_id!
   gate.reportOutcome(rid, 'timeout')
-  assert.equal(gate.decide(w.input(w.request({ amount_minor: 5000 }), grant)).record.reason, 'budget_exceeded')
+  assert.equal(gate.decide(w.input(w.request({ amount_minor: 5000 }), grant)).reason, 'budget_exceeded')
   gate.reconcile(rid, { outcome: 'failed', confirmation: { platform_ref: 'p-2' } })
-  const again = gate.decide(w.input(w.request({ amount_minor: 5000 }), grant)).record
+  const again = gate.decide(w.input(w.request({ amount_minor: 5000 }), grant))
   assert.equal(again.verdict, 'permit')
 })
 
@@ -55,8 +55,8 @@ test('4c. reconcile placed commits an unresolved reservation, and failed without
   t.after(() => w.cleanup())
   const gate = w.open()
   const grant = w.grant()
-  const a = gate.decide(w.input(w.request({ amount_minor: 2000 }), grant)).record.reservation_id!
-  const b = gate.decide(w.input(w.request({ amount_minor: 2000 }), grant)).record.reservation_id!
+  const a = gate.decide(w.input(w.request({ amount_minor: 2000 }), grant)).reservation_id!
+  const b = gate.decide(w.input(w.request({ amount_minor: 2000 }), grant)).reservation_id!
   assert.equal(gate.reportOutcome(a, 'unknown').state, 'unresolved')
   assert.equal(gate.reconcile(a, { outcome: 'placed', confirmation: { platform_ref: 'ord-9' } }).state, 'committed')
   // A failure report with no platform confirmation is not a confirmed failure.

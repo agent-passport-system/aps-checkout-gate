@@ -54,8 +54,8 @@ test('3. crash between reserve and order: restart marks it unresolved and the bu
 
   // A request that needs the held budget is refused, signed, and reserves nothing.
   const next = w.request({ amount_minor: 5000 })
-  const { record } = gate.decide(w.input(next, grant))
-  assert.equal(record.verdict, 'refuse')
+  const record = gate.decide(w.input(next, grant))
+  assert.equal(record.verdict, 'deny')
   assert.equal(record.reason, 'budget_exceeded')
   assert.equal(gate.reservationForRequest(next.request_id), undefined)
 
@@ -70,7 +70,7 @@ test('3b. recovery leaves a reservation younger than the window alone', t => {
   t.after(() => w.cleanup())
   const grant = w.grant()
   const g1 = w.open()
-  const { record } = g1.decide(w.input(w.request(), grant))
+  const record = g1.decide(w.input(w.request(), grant))
   g1.close()
   w.clock.t += 10_000
   const g2 = w.open({ recoveryWindowMs: 30_000 })

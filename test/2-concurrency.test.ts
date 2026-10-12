@@ -47,7 +47,7 @@ test('2. concurrency: separate processes on one db file never reserve past the g
   assert.deepEqual(parsed.map(p => p.late), Array(N).fill(false))
 
   const permits = parsed.filter(p => p.verdict === 'permit')
-  const refusals = parsed.filter(p => p.verdict === 'refuse')
+  const refusals = parsed.filter(p => p.verdict === 'deny')
   assert.equal(permits.length, Math.floor(LIMIT / AMOUNT))
   assert.equal(refusals.length, N - Math.floor(LIMIT / AMOUNT))
   for (const r of refusals) assert.equal(r.reason, 'budget_exceeded')

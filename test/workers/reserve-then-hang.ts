@@ -9,6 +9,6 @@ import { Gate } from '../../src/gate.ts'
 
 const f = JSON.parse(readFileSync(process.argv[2], 'utf8'))
 const gate = Gate.open({ dbPath: f.dbPath, gate: f.gate, directory: f.directory })
-const { record } = gate.decide(f.input)
-console.log(JSON.stringify({ verdict: record.verdict, reason: record.reason, reservation_id: record.reservation_id }))
+const r = gate.decide(f.input)
+console.log(JSON.stringify({ verdict: r.verdict, reason: r.reason, reservation_id: r.reservation_id }))
 setInterval(() => { /* placing the order, never finishes */ }, 1000)

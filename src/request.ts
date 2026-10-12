@@ -10,10 +10,14 @@ import type { AuthorityDelegationV1, ReceiptV1 } from 'agent-passport-system'
 import { keyId } from './parties.ts'
 import type { Party } from './parties.ts'
 
+/** A line item. Prices are optional, but a request prices all of its items or
+ *  none of them. Tax, shipping and discounts that change the total have to be
+ *  line items too when items are priced, because priced items must sum to the
+ *  amount exactly. */
 export interface LineItem {
   sku: string
   quantity: number
-  unit_price_minor: number
+  unit_price_minor?: number
 }
 
 export interface PurchaseRequest {
@@ -30,6 +34,7 @@ export interface PurchaseRequest {
 
 const REQUEST_KEYS = ['agent_id', 'amount_minor', 'currency', 'items', 'merchant_id', 'order_ref', 'request_id']
 const ITEM_KEYS = ['quantity', 'sku', 'unit_price_minor']
+const UNPRICED_ITEM_KEYS = ['quantity', 'sku']
 
 export const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -60,12 +65,32 @@ export function requestShapeProblems(v: unknown): string[] {
     p.push('items is not a list of 1 to 100 line items')
   } else {
     v.items.forEach((it, i) => {
-      if (!isRecord(it) || !hasExactKeys(it, ITEM_KEYS) || !nonEmpty(it.sku) || !posInt(it.quantity) || !nonNegInt(it.unit_price_minor)) {
-        p.push(`items[${i}] is not {sku, quantity, unit_price_minor} with integer quantity and minor units`)
+      const priced = isRecord(it) && hasExactKeys(it, ITEM_KEYS)
+      const unpriced = isRecord(it) && hasExactKeys(it, UNPRICED_ITEM_KEYS)
+      if (!(priced || unpriced) || !nonEmpty(it.sku) || !posInt(it.quantity) || (priced && !nonNegInt(it.unit_price_minor))) {
+        p.push(`items[${i}] is not {sku, quantity} or {sku, quantity, unit_price_minor} with integer quantity and minor units`)
       }
     })
+    if (p.length === 0) {
+      const n = (v.items as Record<string, unknown>[]).filter(it => 'unit_price_minor' in it).length
+      if (n !== 0 && n !== v.items.length) p.push('items must all carry unit_price_minor or none of them')
+    }
   }
   return p
+}
+
+/** Priced items must sum exactly to amount_minor. Computed in BigInt, so a
+ *  large quantity times a large price cannot round. Returns priced=false when
+ *  no item carries a price: the gate then has nothing to cross-check the
+ *  amount against, and records that in the decision evidence. Call only on a
+ *  request that passed requestShapeProblems. */
+export function itemsAmountCheck(request: PurchaseRequest): { priced: boolean; problem?: string } {
+  if (request.items.every(it => it.unit_price_minor === undefined)) return { priced: false }
+  const sum = request.items.reduce((s, it) => s + BigInt(it.quantity) * BigInt(it.unit_price_minor!), 0n)
+  if (sum !== BigInt(request.amount_minor)) {
+    return { priced: true, problem: `line items sum to ${sum} minor units, amount_minor is ${request.amount_minor}` }
+  }
+  return { priced: true }
 }
 
 export function sha256Hex(s: string): string {

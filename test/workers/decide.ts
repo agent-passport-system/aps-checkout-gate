@@ -14,8 +14,8 @@ const input = f.inputs[Number(indexArg)]
 const late = Date.now() >= f.startAt
 while (Date.now() < f.startAt) { /* spin to the common start */ }
 try {
-  const { record } = gate.decide(input)
-  console.log(JSON.stringify({ late, verdict: record.verdict, reason: record.reason, reservation_id: record.reservation_id }))
+  const r = gate.decide(input)
+  console.log(JSON.stringify({ late, verdict: r.verdict, reason: r.reason, reservation_id: r.reservation_id }))
 } catch (e) {
   console.log(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }))
 } finally {

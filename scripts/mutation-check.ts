@@ -93,8 +93,56 @@ const mutants: Mutant[] = [
     edits: [{ file: GATE, find: 'if (intent.action_ref !== digest) problems.push(', replace: 'if (false /* MUTANT (12) */) problems.push(' }],
   },
   {
-    name: '(13) decision signature check removed from the verifier',
-    edits: [{ file: 'src/decision.ts', find: "if (!ok) problems.push('decision signature", replace: "if (false /* MUTANT (13) */) problems.push('decision signature" }],
+    name: '(13) receipt checks removed from the decision verifier',
+    edits: [
+      { file: 'src/decision.ts', find: 'if (!rv.valid) problems.push(', replace: 'if (false /* MUTANT (13) */) problems.push(' },
+      { file: 'src/decision.ts', find: 'if (!cv.valid) problems.push(', replace: 'if (false /* MUTANT (13) */) problems.push(' },
+    ],
+  },
+  {
+    name: '(13b) decision_ref binding check removed from the decision verifier',
+    edits: [{ file: 'src/decision.ts', find: 'if (!cv.valid) problems.push(', replace: 'if (false /* MUTANT (13b) */) problems.push(' }],
+  },
+  // Properties added in the second round.
+  {
+    name: '(14) transient refusals removed: a refusal becomes the idempotency answer',
+    edits: [{ file: GATE, find: 'this.store(record, reservationId !== null ? digest : undefined)', replace: 'this.store(record, digest) // MUTANT (14)' }],
+  },
+  {
+    name: '(15) request_id_conflict rule removed: different content under a permitted id is evaluated again',
+    edits: [{ file: GATE, find: '      if (prior !== undefined) {', replace: '      if (prior !== undefined && prior.request_digest === digest) { // MUTANT (15)' }],
+  },
+  {
+    name: '(16) line item sum check removed',
+    edits: [{ file: GATE, find: 'if (items.problem !== undefined) problems.push(', replace: 'if (false /* MUTANT (16) */) problems.push(' }],
+  },
+  {
+    name: '(17) all-or-none item pricing rule removed',
+    edits: [{ file: 'src/request.ts', find: 'if (n !== 0 && n !== v.items.length) p.push(', replace: 'if (false /* MUTANT (17) */) p.push(' }],
+  },
+  {
+    name: '(18) intent staleness check removed',
+    edits: [{ file: GATE, find: 'if (now.getTime() - issued > this.intentMaxAgeMs) {', replace: 'if (false /* MUTANT (18) */) {' }],
+  },
+  {
+    name: '(19) intent from the future check removed',
+    edits: [{ file: GATE, find: '} else if (issued - now.getTime() > this.intentMaxSkewMs) {', replace: '} else if (false /* MUTANT (19) */) {' }],
+  },
+  {
+    name: '(20) a refusal cites an intent whose signature did not verify',
+    edits: [{
+      file: GATE,
+      find: 'const facts = this.facts(digest, request.request_id, digest, grantId, iv.valid ? snap.intent as ReceiptV1 : null)',
+      replace: 'const facts = this.facts(digest, request.request_id, digest, grantId, snap.intent as ReceiptV1) // MUTANT (20)',
+    }],
+  },
+  {
+    name: '(21) the decision receipt action_ref no longer binds the request',
+    edits: [{
+      file: GATE,
+      find: 'const facts = this.facts(digest, request.request_id',
+      replace: 'const facts = this.facts(UNCANONICAL_REQUEST_REF /* MUTANT (21) */, request.request_id',
+    }],
   },
 ]
 
