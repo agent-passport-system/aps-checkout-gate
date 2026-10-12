@@ -1,6 +1,5 @@
 // The gate's decision record, an aps:policy-decision:v1 receipt built with the
-// SDK the same way as the day 238 probe's issue() for vocabulary #193:
-// createReceiptV1 with a decision_ref from buildDecisionRefV1 and an
+// SDK: createReceiptV1 with a decision_ref from buildDecisionRefV1 and an
 // aps-core-decision-output-v1 result. Every decision, permit or deny, is one.
 //
 // The receipt schema is closed and its result must be exactly the core decision

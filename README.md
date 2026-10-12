@@ -1,6 +1,6 @@
 # aps-checkout-gate
 
-A local sandbox. One gate sits in front of a merchant's existing checkout and decides whether an agent may buy. It checks the agent's Agent Passport System (APS) grant and the agent's signed intent with the `agent-passport-system` SDK, reserves budget atomically in sqlite, and signs every decision, refusals included, as an `aps:policy-decision:v1` receipt. Context is aeoess/agent-governance-vocabulary#199. Nothing here is published or deployed.
+A local sandbox. One gate sits in front of a merchant's existing checkout and decides whether an agent may buy. It checks the agent's Agent Passport System (APS) grant and the agent's signed intent with the `agent-passport-system` SDK, reserves budget atomically in sqlite, and signs every decision, refusals included, as an `aps:policy-decision:v1` receipt. Context is aeoess/agent-governance-vocabulary#199. Nothing here is deployed.
 
 ## Scope
 
@@ -22,7 +22,7 @@ A local sandbox. One gate sits in front of a merchant's existing checkout and de
 
 ### The decision receipt
 
-Built with `createReceiptV1`, with `decision_ref` from `buildDecisionRefV1` and an `aps-core-decision-output-v1` result, the same construction as the day 238 probe.
+Built with `createReceiptV1`, with `decision_ref` from `buildDecisionRefV1` and an `aps-core-decision-output-v1` result.
 
 - `action_ref` is the request digest, sha256 over the JCS form of the request. It is the same value the agent's intent commits to. It is not the SDK's `computeActionRefV2`, because the intent here was never built on that.
 - `prev` is the intent's `receipt_id` and `subject_agent` is the intent's agent, but only when the intent signature verifies. Otherwise the receipt cites `unverified-intent` and a fixed hash, so the gate's signature does not lend weight to an unverified claim.
