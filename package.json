@@ -1,0 +1,24 @@
+{
+  "name": "aps-checkout-gate",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local sandbox: a checkout gate that checks an APS delegation and a signed intent, reserves budget atomically in sqlite, and signs every decision.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/server.ts",
+    "test": "node --disable-warning=ExperimentalWarning --test 'test/*.test.ts'",
+    "mutation": "node scripts/mutation-check.ts",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "agent-passport-system": "7.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "typescript": "5.9.3"
+  }
+}
