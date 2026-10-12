@@ -6,6 +6,8 @@
 //   POST /reconcile  {reservation_id, outcome, confirmation}   -> OutcomeResult
 //   GET  /decisions/<receipt_id>                              -> {receipt, evidence}
 //   GET  /gate-key                                            -> {gate_id, key_id, public_key}
+//   GET  /reservations/<reservation_id>                       -> reservation row
+//   GET  /budget?grant_id=<delegation_id>                     -> minor units per state, as strings
 //
 // Run: node src/server.ts <config.json>
 // config.json: {dbPath, gate: {id, role, publicKey, privateKey}, directory, port?}
@@ -50,6 +52,14 @@ export function createGateServer(gate: Gate): Server {
       if (req.method === 'GET' && url.pathname.startsWith('/decisions/')) {
         const d = gate.decision(decodeURIComponent(url.pathname.slice('/decisions/'.length)))
         return d ? send(res, 200, d) : send(res, 404, { error: 'not_found' })
+      }
+      if (req.method === 'GET' && url.pathname.startsWith('/reservations/')) {
+        const r = gate.reservation(decodeURIComponent(url.pathname.slice('/reservations/'.length)))
+        return r ? send(res, 200, { ...r }) : send(res, 404, { error: 'not_found' })
+      }
+      if (req.method === 'GET' && url.pathname === '/budget') {
+        const grantId = url.searchParams.get('grant_id')
+        return grantId ? send(res, 200, gate.budget(grantId)) : send(res, 400, { error: 'grant_id is required' })
       }
       if (req.method !== 'POST') return send(res, 404, { error: 'not_found' })
       let body: unknown

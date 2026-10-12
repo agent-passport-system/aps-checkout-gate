@@ -39,4 +39,13 @@ test('8. the HTTP wrapper passes decide, outcome and reconcile through to the co
   const stored = await (await fetch(`${base}/decisions/${d.json.decision.receipt.receipt_id}`)).json()
   assert.deepEqual(stored, d.json.decision)
   assert.equal((await fetch(base + '/decide', { method: 'POST', body: 'not json' })).status, 400)
+
+  const resv = await (await fetch(`${base}/reservations/${rid}`)).json() as { state: string; amount_minor: number }
+  assert.equal(resv.state, 'committed')
+  assert.equal(resv.amount_minor, 7000)
+  const budget = await (await fetch(`${base}/budget?grant_id=${encodeURIComponent(grant.delegation_id)}`)).json() as Record<string, string>
+  assert.equal(budget.held, '7000')
+  assert.equal(budget.committed, '7000')
+  assert.equal((await fetch(`${base}/budget`)).status, 400)
+  assert.equal((await fetch(`${base}/reservations/res_missing`)).status, 404)
 })

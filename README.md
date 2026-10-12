@@ -56,7 +56,7 @@ Only `reconcile(reservation_id, {outcome, confirmation})` moves an unresolved re
 
 When a gate opens its file, any `reserved` row older than the recovery window (default 15 minutes) moves to `unresolved`, never to `released`.
 
-`src/server.ts` is a thin `node:http` wrapper (`/decide`, `/outcome`, `/reconcile`, `/decisions/<receipt_id>`, `/gate-key`) bound to 127.0.0.1 with no caller authentication.
+`src/server.ts` is a thin `node:http` wrapper (`/decide`, `/outcome`, `/reconcile`, `/decisions/<receipt_id>`, `/reservations/<reservation_id>`, `/budget?grant_id=`, `/gate-key`) bound to 127.0.0.1 with no caller authentication.
 
 ## Run it
 
@@ -64,11 +64,14 @@ Needs Node 24. Node runs the TypeScript directly, there is no build step, and st
 
 ```
 npm install
+npm run demo        # self-running merchant walkthrough over HTTP, see docs/DEMO.md
 npm test            # node:test, every property in the spec
 npm run mutation    # removes one property at a time in scratch copies, each must make a test fail
 npm run typecheck
 node src/server.ts <config.json>   # {dbPath, gate: {id, role, publicKey, privateKey}, directory, port?}
 ```
+
+`npm run demo` needs no setup and no arguments. It starts the real server on a free localhost port with fresh keys and a temporary database, walks through seven checkout steps, verifies every receipt with the key from `/gate-key`, and exits 0 only when every step matched. docs/DEMO.md explains it and has sample output.
 
 RUN.md has the commands, exit codes, test counts and mutation output from the recorded run.
 

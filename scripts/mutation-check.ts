@@ -152,7 +152,8 @@ let survived = 0
 for (const m of mutants) {
   const tmp = mkdtempSync(join(tmpdir(), 'checkout-gate-mutant-'))
   try {
-    for (const d of ['src', 'test']) cpSync(join(here, d), join(tmp, d), { recursive: true })
+    // scripts is copied too, because test 10 runs the demo from scripts/demo.ts.
+    for (const d of ['src', 'test', 'scripts']) cpSync(join(here, d), join(tmp, d), { recursive: true })
     cpSync(join(here, 'package.json'), join(tmp, 'package.json'))
     symlinkSync(join(here, 'node_modules'), join(tmp, 'node_modules'))
 

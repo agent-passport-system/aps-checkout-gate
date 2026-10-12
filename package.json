@@ -10,6 +10,7 @@
   },
   "scripts": {
     "start": "node --disable-warning=ExperimentalWarning src/server.ts",
+    "demo": "node --disable-warning=ExperimentalWarning scripts/demo.ts",
     "test": "node --disable-warning=ExperimentalWarning --test 'test/*.test.ts'",
     "mutation": "node scripts/mutation-check.ts",
     "typecheck": "tsc -p ."
