@@ -83,3 +83,49 @@ test('14. malformed verdict configuration fails when the adapter is built', () =
   assert.deepEqual(verdictProblems(v.event, v.request, v.action_ref, new Date(issued + 660_000), { ...base, proceedOn: ['approve', 'approve_with_concerns'], maxAgeMs: 600_000 }).map(p => p.code), ['verdict_stale'])
   assert.throws(() => verdictProblems(v.event, v.request, v.action_ref, new Date(issued), { ...base, maxAgeMs: '600000ms' } as never))
 })
+
+test('14. a class-based adapter keeps its own this', t => {
+  const w = world(); t.after(() => w.cleanup())
+  class TokenCheck implements EvidenceCheck {
+    name = 'token'
+    expected = 'ok'
+    check(i: { evidence: unknown }) {
+      return i.evidence === this.expected ? { problems: [], evidence_id: 'tok' } : { problems: [{ code: 'token_wrong', message: 'wrong' }], evidence_id: null }
+    }
+  }
+  const gate = w.open({ evidenceChecks: [new TokenCheck()] })
+  const grant = w.grant()
+  const ok = gate.decide({ ...w.input(w.request(), grant), evidence: { token: 'ok' } })
+  assert.equal(ok.verdict, 'permit')
+  expectRefusal(w, gate, { ...w.input(w.request(), grant), evidence: { token: 'no' } }, 'token_wrong')
+})
+
+test('14. shared memory in evidence is never shared between checks or with the caller', t => {
+  // A bare SharedArrayBuffer cannot be copied into private memory, so it is a signed refusal.
+  {
+    const w = world(); t.after(() => w.cleanup())
+    let calls = 0
+    const gate = w.open({ evidenceChecks: [{ name: 'x', check: () => { calls++; return { problems: [], evidence_id: null } } }] })
+    const r = gate.decide({ ...w.input(w.request(), w.grant()), evidence: { x: { nested: [new SharedArrayBuffer(1)] } } })
+    assert.equal(r.verdict, 'deny')
+    assert.equal(r.reason, 'malformed_request')
+    assert.deepEqual(w.verifies(r.record), { valid: true, problems: [] })
+    assert.equal(calls, 0)
+  }
+  // A view over shared memory is copied: the first check's write reaches neither the second check nor the caller.
+  {
+    const w = world(); t.after(() => w.cleanup())
+    const sab = new SharedArrayBuffer(1)
+    const view = new Uint8Array(sab)
+    const writer: EvidenceCheck = { name: 'first', check(i) { (i.evidence as Uint8Array)[0] = 1; return { problems: [], evidence_id: null } } }
+    const reader: EvidenceCheck = {
+      name: 'second',
+      check(i) {
+        return (i.evidence as Uint8Array)[0] === 1 ? { problems: [], evidence_id: null } : { problems: [{ code: 'not_set', message: 'byte not set' }], evidence_id: null }
+      },
+    }
+    const gate = w.open({ evidenceChecks: [writer, reader] })
+    expectRefusal(w, gate, { ...w.input(w.request(), w.grant()), evidence: { first: view, second: view } }, 'not_set')
+    assert.equal(view[0], 0, 'the caller memory is untouched')
+  }
+})

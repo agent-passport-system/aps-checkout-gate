@@ -29,6 +29,7 @@
 
 import { randomBytes } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
+import { deserialize, serialize } from 'node:v8'
 import type { StatementSync } from 'node:sqlite'
 import { canonicalizeJCS, scopeGrantCovers, verifyAuthorityDelegationChain, verifyReceiptV1 } from 'agent-passport-system'
 import type { AuthorityDelegationV1, AuthorityValidationResult, ReceiptV1, RevocationResolution } from 'agent-passport-system'
@@ -265,7 +266,10 @@ export class Gate {
     // Only evidence a configured check uses is read, so unused evidence cannot change the decision.
     // Evidence is copied apart from the request, delegation and intent, one copy per check, so evidence that
     // references any of them (or another check's evidence) shares nothing with what the gate authorizes.
-    // It is kept in a Map, so a check name can never resolve to an inherited property.
+    // It is kept in a Map, so a check name can never resolve to an inherited property. The copy goes through
+    // v8 serialize and deserialize, not structuredClone: structuredClone keeps a SharedArrayBuffer shared, so one
+    // check could change another check's evidence or the caller's memory. v8 copies the contents of every typed
+    // array or DataView into private memory and refuses a bare SharedArrayBuffer, which becomes a signed refusal.
     let snap: { request: unknown; delegation: unknown; intent: unknown; evidence: Map<string, unknown> }
     try {
       const evidence = new Map<string, unknown>()
@@ -273,7 +277,7 @@ export class Gate {
         const supplied: unknown = input?.evidence
         for (const c of this.evidenceChecks) {
           const v = isRecord(supplied) && Object.hasOwn(supplied, c.name) ? supplied[c.name] : undefined
-          evidence.set(c.name, v === undefined ? undefined : structuredClone(v))
+          evidence.set(c.name, v === undefined ? undefined : deserialize(serialize(v)))
         }
       }
       const core = structuredClone({ request: input?.request, delegation: input?.delegation, intent: input?.intent })

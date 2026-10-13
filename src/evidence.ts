@@ -53,7 +53,7 @@ export const CHECK_NAME = /^[a-z0-9_]+$/
 const RESERVED = (name: string): boolean => Object.prototype.hasOwnProperty.call(Object.prototype, name)
 
 /** Validates the configured checks and returns a frozen copy of each {name, check}, read once, so a getter on the
- *  caller's object cannot change a name or a function after the gate opens. Throws on a configuration the gate should
+ *  caller's object cannot change a name or a function after the gate opens. The function stays bound to its object. Throws on a configuration the gate should
  *  not open with. */
 export function validateChecks(checks: readonly EvidenceCheck[]): readonly EvidenceCheck[] {
   if (!Array.isArray(checks)) throw new Error('evidenceChecks must be an array')
@@ -68,7 +68,8 @@ export function validateChecks(checks: readonly EvidenceCheck[]): readonly Evide
     if (RESERVED(name)) throw new Error(`evidence check name ${name} is reserved`)
     if (seen.has(name)) throw new Error(`evidence check ${name} is configured twice`)
     seen.add(name)
-    out.push(Object.freeze({ name, check: check as EvidenceCheck['check'] }))
+    // Bound to the object it came from, so a class-based adapter keeps its own `this`.
+    out.push(Object.freeze({ name, check: (check as EvidenceCheck['check']).bind(c) }))
   }
   return Object.freeze(out)
 }

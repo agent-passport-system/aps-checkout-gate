@@ -76,7 +76,7 @@ const mutants: Mutant[] = [
   // Hardening after the 12f5023 review (test/14).
   {
     name: '(H1) evidence is not copied apart from the input: a check can reach the caller\'s request',
-    edits: [{ file: GATE, find: 'evidence.set(c.name, v === undefined ? undefined : structuredClone(v))', replace: 'evidence.set(c.name, v) // MUTANT (H1)' }],
+    edits: [{ file: GATE, find: 'evidence.set(c.name, v === undefined ? undefined : deserialize(serialize(v)))', replace: 'evidence.set(c.name, v) // MUTANT (H1)' }],
   },
   {
     name: '(H2) reserved check names accepted: __proto__ resolves through Object.prototype',
@@ -96,6 +96,14 @@ const mutants: Mutant[] = [
   {
     name: '(H5) proceedOn not validated: a string matches by substring',
     edits: [{ file: 'src/verdict.ts', find: "if (!Array.isArray(proceedOn) || proceedOn.length === 0 || !proceedOn.every(v => typeof v === 'string' && v.length > 0)) {", replace: 'if (false /* MUTANT (H5) */) {' }],
+  },
+  {
+    name: '(H6) shared memory copied with structuredClone: one check can change another check\'s evidence',
+    edits: [{ file: GATE, find: 'evidence.set(c.name, v === undefined ? undefined : deserialize(serialize(v)))', replace: 'evidence.set(c.name, v === undefined ? undefined : structuredClone(v)) // MUTANT (H6)' }],
+  },
+  {
+    name: '(H7) check not bound to its object: a class-based adapter loses its this',
+    edits: [{ file: 'src/evidence.ts', find: "check: (check as EvidenceCheck['check']).bind(c) }", replace: "check: check as EvidenceCheck['check'] /* MUTANT (H7) */ }" }],
   },
   {
     name: '(D1) a refusal without a usable delegation id cites an invalid delegation_ref again (decide() throws)',
