@@ -49,37 +49,81 @@ export interface CheckedEvidence { check: string; evidence_id: string | null }
 
 export const CHECK_NAME = /^[a-z0-9_]+$/
 
-const isProblem = (p: unknown): p is Problem =>
-  isRecord(p) && typeof p.code === 'string' && p.code.length > 0 && typeof p.message === 'string'
+/** Names an evidence map could resolve through Object.prototype (__proto__, constructor, ...). Refused as check names. */
+const RESERVED = (name: string): boolean => Object.prototype.hasOwnProperty.call(Object.prototype, name)
 
-/** Throws on a configuration the gate should not open with. */
-export function validateChecks(checks: readonly EvidenceCheck[]): void {
+/** Validates the configured checks and returns a frozen copy of each {name, check}, read once, so a getter on the
+ *  caller's object cannot change a name or a function after the gate opens. The function stays bound to its object. Throws on a configuration the gate should
+ *  not open with. */
+export function validateChecks(checks: readonly EvidenceCheck[]): readonly EvidenceCheck[] {
+  if (!Array.isArray(checks)) throw new Error('evidenceChecks must be an array')
   const seen = new Set<string>()
+  const out: EvidenceCheck[] = []
   for (const c of checks) {
-    if (!isRecord(c) || typeof c.name !== 'string' || !CHECK_NAME.test(c.name) || typeof c.check !== 'function') {
+    const name: unknown = isRecord(c) ? c.name : undefined
+    const check: unknown = isRecord(c) ? c.check : undefined
+    if (typeof name !== 'string' || !CHECK_NAME.test(name) || typeof check !== 'function') {
       throw new Error('each evidence check needs a name matching [a-z0-9_]+ and a check function')
     }
-    if (seen.has(c.name)) throw new Error(`evidence check ${c.name} is configured twice`)
-    seen.add(c.name)
+    if (RESERVED(name)) throw new Error(`evidence check name ${name} is reserved`)
+    if (seen.has(name)) throw new Error(`evidence check ${name} is configured twice`)
+    seen.add(name)
+    // Bound to the object it came from, so a class-based adapter keeps its own `this`.
+    out.push(Object.freeze({ name, check: (check as EvidenceCheck['check']).bind(c) }))
+  }
+  return Object.freeze(out)
+}
+
+/** A description of a thrown value that cannot itself throw. */
+function describe(e: unknown): string {
+  try {
+    if (e instanceof Error) return String(e.message)
+    return String(e)
+  } catch {
+    return 'an unprintable value'
   }
 }
 
-/** Runs one check and turns absence, a throw or a malformed return into a refusal. */
+/** Reads a check's return value once and copies it into plain data. Anything else (a non-object, a throwing getter or
+ *  Proxy, a sparse or non-array problems list, a problem without a non-empty string code and a string message, an
+ *  evidence_id that is neither null nor a string) is a malformed result. Throws only into runCheck's guard. */
+function normalize(r: unknown): EvidenceCheckResult | null {
+  if (!isRecord(r)) return null
+  const problems: unknown = r.problems
+  const evidenceId: unknown = r.evidence_id
+  if (!Array.isArray(problems)) return null
+  if (!(evidenceId === null || typeof evidenceId === 'string')) return null
+  const length: unknown = problems.length
+  if (typeof length !== 'number' || !Number.isSafeInteger(length) || length < 0) return null
+  const out: Problem[] = []
+  for (let i = 0; i < length; i++) {
+    if (!Object.hasOwn(problems, i)) return null
+    const p: unknown = problems[i]
+    if (!isRecord(p)) return null
+    const code: unknown = p.code
+    const message: unknown = p.message
+    if (typeof code !== 'string' || code.length === 0 || typeof message !== 'string') return null
+    out.push({ code, message })
+  }
+  return { problems: out, evidence_id: evidenceId }
+}
+
+/** Runs one check and turns absence, a throw or a malformed return into a refusal. The call, the inspection of its
+ *  result and the copy are all inside one guard, so no return value can make decide() throw. */
 export function runCheck(c: EvidenceCheck, input: Omit<EvidenceCheckInput, 'evidence'>, evidence: unknown): { problems: Problem[]; checked: CheckedEvidence } {
   const checked: CheckedEvidence = { check: c.name, evidence_id: null }
   if (evidence === undefined) {
     return { problems: [{ code: 'evidence_missing', message: `this gate requires ${c.name} evidence` }], checked }
   }
-  let r: unknown
+  let r: EvidenceCheckResult | null
   try {
-    r = c.check({ ...input, evidence })
+    r = normalize(c.check({ ...input, evidence }))
   } catch (e) {
-    return { problems: [{ code: 'evidence_check_failed', message: `${c.name} check threw: ${e instanceof Error ? e.message : String(e)}` }], checked }
+    return { problems: [{ code: 'evidence_check_failed', message: `${c.name} check threw: ${describe(e)}` }], checked }
   }
-  if (!isRecord(r) || !Array.isArray(r.problems) || !r.problems.every(isProblem) ||
-      !(r.evidence_id === null || typeof r.evidence_id === 'string')) {
+  if (r === null) {
     return { problems: [{ code: 'evidence_check_failed', message: `${c.name} check returned a malformed result` }], checked }
   }
   checked.evidence_id = r.evidence_id
-  return { problems: r.problems.map(p => ({ code: p.code, message: p.message })), checked }
+  return { problems: r.problems, checked }
 }
