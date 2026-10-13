@@ -32,7 +32,7 @@ import { DatabaseSync } from 'node:sqlite'
 import type { StatementSync } from 'node:sqlite'
 import { canonicalizeJCS, scopeGrantCovers, verifyAuthorityDelegationChain, verifyReceiptV1 } from 'agent-passport-system'
 import type { AuthorityDelegationV1, AuthorityValidationResult, ReceiptV1, RevocationResolution } from 'agent-passport-system'
-import { CONTEXT_PROFILE, UNCANONICAL_REQUEST_REF, UNVERIFIED_INTENT, UNVERIFIED_INTENT_REF, issueDecision, reasonOf, reservationOf, verdictOf } from './decision.ts'
+import { CONTEXT_PROFILE, NO_DELEGATION_REF, UNCANONICAL_REQUEST_REF, UNVERIFIED_INTENT, UNVERIFIED_INTENT_REF, issueDecision, reasonOf, reservationOf, verdictOf } from './decision.ts'
 import type { DecisionEvidence, DecisionRecord, Verdict } from './decision.ts'
 import { purchaseGrant, spendUnit } from './delegation.ts'
 import { keyId, keyOf } from './parties.ts'
@@ -447,7 +447,9 @@ export class Gate {
         action_ref: actionRef,
         prev: verifiedIntent?.receipt_id ?? UNVERIFIED_INTENT_REF,
         subject_agent: verifiedIntent?.subject_agent ?? UNVERIFIED_INTENT,
-        delegation_ref: grantId ?? 'no-delegation',
+        // A grant id from the input is cited only in the form a receipt accepts; anything else made the refusal itself
+        // fail to issue (decide() threw a TypeError for a missing delegation or uncopyable input).
+        delegation_ref: grantId !== null && /^sha256:[0-9a-f]{64}$/.test(grantId) ? grantId : NO_DELEGATION_REF,
       },
       authority_state: { grant_id: grantId, spend_unit: null, cumulative_minor: null, held_minor_before: null },
       policy_input: { request_id: requestId, request_digest: digest, intent_receipt_id: verifiedIntent?.receipt_id ?? null, items_priced: null },

@@ -74,6 +74,9 @@ export const UNVERIFIED_INTENT = 'unverified-intent'
 export const UNVERIFIED_INTENT_REF = sha256Hex(UNVERIFIED_INTENT)
 /** action_ref of a refusal whose input could not be canonicalized at all. */
 export const UNCANONICAL_REQUEST_REF = sha256Hex('uncanonicalizable-request')
+/** Cited as delegation_ref when the input carries no usable delegation id: a refusal must still be a valid ReceiptV1,
+ *  whose delegation_ref has to be "sha256:" + 64 hex. */
+export const NO_DELEGATION_REF = 'sha256:' + sha256Hex('no-usable-delegation')
 
 export interface IssueArgs {
   action_ref: string

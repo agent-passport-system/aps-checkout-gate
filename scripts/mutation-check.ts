@@ -73,6 +73,10 @@ const mutants: Mutant[] = [
     name: '(E5) each check gets the gate\'s request object instead of a copy',
     edits: [{ file: GATE, find: 'runCheck(c, { request: structuredClone(request),', replace: 'runCheck(c, { request /* MUTANT (E5) */,' }],
   },
+  {
+    name: '(D1) a refusal without a usable delegation id cites an invalid delegation_ref again (decide() throws)',
+    edits: [{ file: GATE, find: 'delegation_ref: grantId !== null && /^sha256:[0-9a-f]{64}$/.test(grantId) ? grantId : NO_DELEGATION_REF,', replace: "delegation_ref: grantId ?? 'no-delegation', // MUTANT (D1)" }],
+  },
   // The six properties spec item 8 names.
   {
     name: '(1) IMMEDIATE removed: transactions start deferred',
