@@ -105,3 +105,19 @@ test('5. a refusal for an intent that does not verify names no agent and no inte
   // The action_ref still binds the exact request the gate refused.
   assert.equal(r.record.receipt.action_ref, requestDigest(req))
 })
+
+test('5. a missing or malformed delegation, and input that cannot be copied, are refused with a signed record, not thrown', t => {
+  const w = world(); t.after(() => w.cleanup())
+  const gate = w.open()
+  const grant = w.grant()
+  const inp = w.input(w.request({ amount_minor: 100 }), grant)
+  for (const bad of [
+    { ...inp, delegation: undefined },
+    { ...inp, delegation: { ...grant, delegation_id: 'not-a-ref' } },
+    { ...inp, intent: (() => 1) as never },
+  ]) {
+    const r = gate.decide(bad as never)
+    assert.equal(r.verdict, 'deny')
+    assert.deepEqual(w.verifies(r.record), { valid: true, problems: [] })
+  }
+})

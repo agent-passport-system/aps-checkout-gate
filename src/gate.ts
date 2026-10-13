@@ -32,18 +32,22 @@ import { DatabaseSync } from 'node:sqlite'
 import type { StatementSync } from 'node:sqlite'
 import { canonicalizeJCS, scopeGrantCovers, verifyAuthorityDelegationChain, verifyReceiptV1 } from 'agent-passport-system'
 import type { AuthorityDelegationV1, AuthorityValidationResult, ReceiptV1, RevocationResolution } from 'agent-passport-system'
-import { CONTEXT_PROFILE, UNCANONICAL_REQUEST_REF, UNVERIFIED_INTENT, UNVERIFIED_INTENT_REF, issueDecision, reasonOf, reservationOf, verdictOf } from './decision.ts'
+import { CONTEXT_PROFILE, NO_DELEGATION_REF, UNCANONICAL_REQUEST_REF, UNVERIFIED_INTENT, UNVERIFIED_INTENT_REF, issueDecision, reasonOf, reservationOf, verdictOf } from './decision.ts'
 import type { DecisionEvidence, DecisionRecord, Verdict } from './decision.ts'
 import { purchaseGrant, spendUnit } from './delegation.ts'
 import { keyId, keyOf } from './parties.ts'
 import type { Party, TrustedKeys } from './parties.ts'
 import { isRecord, itemsAmountCheck, requestDigest, requestShapeProblems, sha256Hex } from './request.ts'
 import type { PurchaseRequest } from './request.ts'
+import { runCheck, validateChecks } from './evidence.ts'
+import type { CheckedEvidence, EvidenceCheck } from './evidence.ts'
 
 export interface DecideInput {
   request: PurchaseRequest
   delegation: AuthorityDelegationV1
   intent: ReceiptV1
+  /** Evidence for the gate's configured checks, keyed by check name (src/evidence.ts). A key no configured check uses is never read. */
+  evidence?: Record<string, unknown>
 }
 
 export interface DecideResult {
@@ -92,6 +96,9 @@ export interface GateConfig {
   intentMaxAgeMs?: number
   /** An intent issued further ahead of the gate clock than this is refused as intent_from_future. Default 30 seconds. */
   intentMaxSkewMs?: number
+  /** Optional required evidence: a permit also needs every one of these checks to pass (src/evidence.ts). Off by default.
+   *  The first adapter is verdictCheck in src/verdict.ts, an independent signed verdict on the exact request. */
+  evidenceChecks?: EvidenceCheck[]
 }
 
 export const DEFAULT_RECOVERY_WINDOW_MS = 15 * 60_000
@@ -166,6 +173,7 @@ export class Gate {
   readonly raceWindowMs: number
   readonly intentMaxAgeMs: number
   readonly intentMaxSkewMs: number
+  readonly evidenceChecks: readonly EvidenceCheck[]
   /** Reservation ids that startup recovery moved to 'unresolved'. */
   recovered: string[] = []
   private readonly now: () => Date
@@ -177,6 +185,8 @@ export class Gate {
     this.recoveryWindowMs = c.recoveryWindowMs ?? DEFAULT_RECOVERY_WINDOW_MS
     this.raceWindowMs = c.raceWindowMs ?? 0
     this.intentMaxAgeMs = c.intentMaxAgeMs ?? DEFAULT_INTENT_MAX_AGE_MS
+    validateChecks(c.evidenceChecks ?? [])
+    this.evidenceChecks = [...(c.evidenceChecks ?? [])]
     this.intentMaxSkewMs = c.intentMaxSkewMs ?? DEFAULT_INTENT_MAX_SKEW_MS
     this.now = c.now ?? (() => new Date())
     this.db = new DatabaseSync(c.dbPath)
@@ -253,9 +263,15 @@ export class Gate {
     const at = now.toISOString()
     // One copy of the input, taken before anything reads it, so a getter or a
     // Proxy cannot answer one check differently from another.
-    let snap: { request: unknown; delegation: unknown; intent: unknown }
+    // Only evidence a configured check uses is read, so unused evidence cannot change the decision.
+    let snap: { request: unknown; delegation: unknown; intent: unknown; evidence: Record<string, unknown> }
     try {
-      snap = structuredClone({ request: input?.request, delegation: input?.delegation, intent: input?.intent })
+      const evidence: Record<string, unknown> = {}
+      if (this.evidenceChecks.length > 0) {
+        const supplied: unknown = input?.evidence
+        for (const c of this.evidenceChecks) evidence[c.name] = isRecord(supplied) && Object.hasOwn(supplied, c.name) ? supplied[c.name] : undefined
+      }
+      snap = structuredClone({ request: input?.request, delegation: input?.delegation, intent: input?.intent, evidence })
     } catch (e) {
       const msg = `input could not be copied for checking: ${e instanceof Error ? e.message : String(e)}`
       const facts = this.facts(UNCANONICAL_REQUEST_REF, null, null, null, null)
@@ -288,6 +304,17 @@ export class Gate {
       }
 
       const problems = this.authorize(request, digest, snap.delegation, snap.intent, iv, now, facts)
+      if (this.evidenceChecks.length > 0) {
+        // Required evidence, checked offline and before any budget is reserved. Each check gets its own copy of the
+        // request. Recorded only when configured, so records from a gate without checks are unchanged.
+        const checked: CheckedEvidence[] = []
+        for (const c of this.evidenceChecks) {
+          const r = runCheck(c, { request: structuredClone(request), action_ref: digest, agent_id: request.agent_id, now: new Date(now) }, snap.evidence[c.name])
+          checked.push(r.checked)
+          problems.push(...r.problems)
+        }
+        facts.policy_input.required_evidence = checked
+      }
       let reservationId: string | null = null
       if (problems.length === 0) {
         const d = snap.delegation as AuthorityDelegationV1
@@ -420,7 +447,9 @@ export class Gate {
         action_ref: actionRef,
         prev: verifiedIntent?.receipt_id ?? UNVERIFIED_INTENT_REF,
         subject_agent: verifiedIntent?.subject_agent ?? UNVERIFIED_INTENT,
-        delegation_ref: grantId ?? 'no-delegation',
+        // A grant id from the input is cited only in the form a receipt accepts; anything else made the refusal itself
+        // fail to issue (decide() threw a TypeError for a missing delegation or uncopyable input).
+        delegation_ref: grantId !== null && /^sha256:[0-9a-f]{64}$/.test(grantId) ? grantId : NO_DELEGATION_REF,
       },
       authority_state: { grant_id: grantId, spend_unit: null, cumulative_minor: null, held_minor_before: null },
       policy_input: { request_id: requestId, request_digest: digest, intent_receipt_id: verifiedIntent?.receipt_id ?? null, items_priced: null },

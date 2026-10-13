@@ -15,6 +15,68 @@ interface Mutant { name: string; edits: Edit[] }
 const GATE = 'src/gate.ts'
 
 const mutants: Mutant[] = [
+  // Optional required evidence: an independent signed verdict on the request (src/verdict.ts, test/11).
+  {
+    name: '(V1) evidence checks ignored: a configured gate permits without its evidence',
+    edits: [{ file: GATE, find: 'if (this.evidenceChecks.length > 0) {\n        // Required evidence', replace: 'if (false /* MUTANT (V1) */) {\n        // Required evidence' }],
+  },
+  {
+    name: '(V2) request binding removed: a verdict on any request passes',
+    edits: [{ file: 'src/verdict.ts', find: "if (c.action_binding_args_hash !== 'sha256:' + actionRef) {", replace: 'if (false /* MUTANT (V2) */) {' }],
+  },
+  {
+    name: '(V3) agent binding removed',
+    edits: [{ file: 'src/verdict.ts', find: 'if (c.action_binding_agent_id !== req.agent_id) {', replace: 'if (false /* MUTANT (V3) */) {' }],
+  },
+  {
+    name: '(V4) proceed_on removed: any verdict, even reject, allows a permit',
+    edits: [{ file: 'src/verdict.ts', find: "if (typeof c.verdict !== 'string' || !allowed.includes(c.verdict)) {", replace: 'if (false /* MUTANT (V4) */) {' }],
+  },
+  {
+    name: '(V5) signature check removed',
+    edits: [{ file: 'src/verdict.ts', find: "if (!schnorrVerify(Buffer.from(ev.id, 'hex'), Buffer.from(ev.pubkey, 'hex'), Buffer.from(ev.sig, 'hex'))) {", replace: 'if (false /* MUTANT (V5) */) {' }],
+  },
+  {
+    name: '(V6) event id recompute removed: edited content keeps a valid signature over the old id',
+    edits: [{ file: 'src/verdict.ts', find: 'if (eventId(ev) !== ev.id) return', replace: 'if (false /* MUTANT (V6) */) return' }],
+  },
+  {
+    name: '(V7) reviewer key check removed: any key may sign',
+    edits: [{ file: 'src/verdict.ts', find: 'if (ev.pubkey !== cfg.verifierPubkey.toLowerCase()) return', replace: 'if (false /* MUTANT (V7) */) return' }],
+  },
+  {
+    name: '(V8) verdict age check removed',
+    edits: [{ file: 'src/verdict.ts', find: '} else if (now.getTime() - verifiedMs > (cfg.maxAgeMs ?? DEFAULT_VERDICT_MAX_AGE_MS)) {', replace: '} else if (false /* MUTANT (V8) */) {' }],
+  },
+  {
+    name: '(V9) future-dated verdict check removed',
+    edits: [{ file: 'src/verdict.ts', find: '} else if (verifiedMs - now.getTime() > (cfg.maxSkewMs ?? DEFAULT_VERDICT_MAX_SKEW_MS)) {', replace: '} else if (false /* MUTANT (V9) */) {' }],
+  },
+  // The evidence hook (src/evidence.ts, test/13).
+  {
+    name: '(E1) missing evidence passed to the check instead of refused',
+    edits: [{ file: 'src/evidence.ts', find: 'if (evidence === undefined) {', replace: 'if (false /* MUTANT (E1) */) {' }],
+  },
+  {
+    name: '(E2) a check that throws is not caught',
+    edits: [{ file: 'src/evidence.ts', find: '  } catch (e) {\n    return', replace: '  } catch (e) {\n    throw e /* MUTANT (E2) */\n    return' }],
+  },
+  {
+    name: '(E3) a malformed check result is trusted',
+    edits: [{ file: 'src/evidence.ts', find: 'if (!isRecord(r) || !Array.isArray(r.problems) || !r.problems.every(isProblem) ||', replace: 'if (false /* MUTANT (E3) */ &&' }],
+  },
+  {
+    name: '(E4) all supplied evidence is copied, so unused evidence can change the decision',
+    edits: [{ file: GATE, find: 'if (this.evidenceChecks.length > 0) {\n        const supplied', replace: 'if (input?.evidence !== undefined) { evidence.all = input.evidence }\n      if (this.evidenceChecks.length > 0) {\n        const supplied' }],
+  },
+  {
+    name: '(E5) each check gets the gate\'s request object instead of a copy',
+    edits: [{ file: GATE, find: 'runCheck(c, { request: structuredClone(request),', replace: 'runCheck(c, { request /* MUTANT (E5) */,' }],
+  },
+  {
+    name: '(D1) a refusal without a usable delegation id cites an invalid delegation_ref again (decide() throws)',
+    edits: [{ file: GATE, find: 'delegation_ref: grantId !== null && /^sha256:[0-9a-f]{64}$/.test(grantId) ? grantId : NO_DELEGATION_REF,', replace: "delegation_ref: grantId ?? 'no-delegation', // MUTANT (D1)" }],
+  },
   // The six properties spec item 8 names.
   {
     name: '(1) IMMEDIATE removed: transactions start deferred',
