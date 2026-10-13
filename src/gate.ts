@@ -185,8 +185,7 @@ export class Gate {
     this.recoveryWindowMs = c.recoveryWindowMs ?? DEFAULT_RECOVERY_WINDOW_MS
     this.raceWindowMs = c.raceWindowMs ?? 0
     this.intentMaxAgeMs = c.intentMaxAgeMs ?? DEFAULT_INTENT_MAX_AGE_MS
-    validateChecks(c.evidenceChecks ?? [])
-    this.evidenceChecks = [...(c.evidenceChecks ?? [])]
+    this.evidenceChecks = validateChecks(c.evidenceChecks ?? [])
     this.intentMaxSkewMs = c.intentMaxSkewMs ?? DEFAULT_INTENT_MAX_SKEW_MS
     this.now = c.now ?? (() => new Date())
     this.db = new DatabaseSync(c.dbPath)
@@ -264,14 +263,21 @@ export class Gate {
     // One copy of the input, taken before anything reads it, so a getter or a
     // Proxy cannot answer one check differently from another.
     // Only evidence a configured check uses is read, so unused evidence cannot change the decision.
-    let snap: { request: unknown; delegation: unknown; intent: unknown; evidence: Record<string, unknown> }
+    // Evidence is copied apart from the request, delegation and intent, one copy per check, so evidence that
+    // references any of them (or another check's evidence) shares nothing with what the gate authorizes.
+    // It is kept in a Map, so a check name can never resolve to an inherited property.
+    let snap: { request: unknown; delegation: unknown; intent: unknown; evidence: Map<string, unknown> }
     try {
-      const evidence: Record<string, unknown> = {}
+      const evidence = new Map<string, unknown>()
       if (this.evidenceChecks.length > 0) {
         const supplied: unknown = input?.evidence
-        for (const c of this.evidenceChecks) evidence[c.name] = isRecord(supplied) && Object.hasOwn(supplied, c.name) ? supplied[c.name] : undefined
+        for (const c of this.evidenceChecks) {
+          const v = isRecord(supplied) && Object.hasOwn(supplied, c.name) ? supplied[c.name] : undefined
+          evidence.set(c.name, v === undefined ? undefined : structuredClone(v))
+        }
       }
-      snap = structuredClone({ request: input?.request, delegation: input?.delegation, intent: input?.intent, evidence })
+      const core = structuredClone({ request: input?.request, delegation: input?.delegation, intent: input?.intent })
+      snap = { request: core.request, delegation: core.delegation, intent: core.intent, evidence }
     } catch (e) {
       const msg = `input could not be copied for checking: ${e instanceof Error ? e.message : String(e)}`
       const facts = this.facts(UNCANONICAL_REQUEST_REF, null, null, null, null)
@@ -309,7 +315,7 @@ export class Gate {
         // request. Recorded only when configured, so records from a gate without checks are unchanged.
         const checked: CheckedEvidence[] = []
         for (const c of this.evidenceChecks) {
-          const r = runCheck(c, { request: structuredClone(request), action_ref: digest, agent_id: request.agent_id, now: new Date(now) }, snap.evidence[c.name])
+          const r = runCheck(c, { request: structuredClone(request), action_ref: digest, agent_id: request.agent_id, now: new Date(now) }, snap.evidence.get(c.name))
           checked.push(r.checked)
           problems.push(...r.problems)
         }

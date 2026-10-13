@@ -127,6 +127,7 @@ function isEvent(v: unknown): v is NostrEvent {
 
 /** Every reason the verdict does not allow this request, in check order. Empty = the verdict allows it. */
 export function verdictProblems(ev: unknown, req: { agent_id: string }, actionRef: string, now: Date, cfg: VerdictRequirement): Problem[] {
+  cfg = validateVerdictRequirement(cfg)
   if (ev === undefined || ev === null) return [{ code: 'verdict_missing', message: 'this gate requires an independent verdict on the request' }]
   if (!isEvent(ev)) return [{ code: 'verdict_invalid', message: 'the verdict is not a NIP-01 event' }]
   if (!HEX64.test(ev.pubkey) || !HEX64.test(ev.id) || !HEX128.test(ev.sig)) {
@@ -170,13 +171,38 @@ export function verdictProblems(ev: unknown, req: { agent_id: string }, actionRe
 /** Curve primitives for tests that need to SIGN a verdict (the gate itself only verifies). */
 export const secp256k1ForTests = { G, N, mul, taggedHash, toBig }
 
-/** The verdict as an evidence check (src/evidence.ts): supply the event as DecideInput.evidence.verdict. */
+/** Checks a VerdictRequirement and returns a frozen copy, so a malformed operator configuration fails when the gate is
+ *  built instead of silently turning a comparison off: a string time limit made the freshness checks compare against
+ *  NaN, and a string proceedOn matched by substring. */
+export function validateVerdictRequirement(cfg: unknown): Readonly<Required<Pick<VerdictRequirement, 'verifierPubkey' | 'proceedOn' | 'maxAgeMs' | 'maxSkewMs'>>> {
+  if (!isRecord(cfg)) throw new Error('the verdict requirement must be an object')
+  const pub: unknown = cfg.verifierPubkey
+  if (typeof pub !== 'string' || !HEX64.test(pub.toLowerCase())) throw new Error('verifierPubkey must be a 64-hex BIP-340 x-only key')
+  const proceedOn: unknown = cfg.proceedOn ?? ['approve']
+  if (!Array.isArray(proceedOn) || proceedOn.length === 0 || !proceedOn.every(v => typeof v === 'string' && v.length > 0)) {
+    throw new Error('proceedOn must be a non-empty array of verdict strings')
+  }
+  const limit = (v: unknown, fallback: number, field: string): number => {
+    const n = v ?? fallback
+    if (typeof n !== 'number' || !Number.isFinite(n) || n < 0) throw new Error(`${field} must be a finite number of milliseconds, 0 or more`)
+    return n
+  }
+  return Object.freeze({
+    verifierPubkey: pub.toLowerCase(),
+    proceedOn: Object.freeze([...(proceedOn as string[])]) as string[],
+    maxAgeMs: limit(cfg.maxAgeMs, DEFAULT_VERDICT_MAX_AGE_MS, 'maxAgeMs'),
+    maxSkewMs: limit(cfg.maxSkewMs, DEFAULT_VERDICT_MAX_SKEW_MS, 'maxSkewMs'),
+  })
+}
+
+/** The verdict as an evidence check (src/evidence.ts): supply the event as DecideInput.evidence.verdict. The
+ *  requirement is validated and copied once, here. */
 export function verdictCheck(cfg: VerdictRequirement, name = 'verdict'): EvidenceCheck {
-  if (!HEX64.test(cfg.verifierPubkey.toLowerCase())) throw new Error('verifierPubkey must be a 64-hex BIP-340 x-only key')
+  const req = validateVerdictRequirement(cfg)
   return {
     name,
     check: ({ request, evidence, action_ref, now }) => ({
-      problems: verdictProblems(evidence, request, action_ref, now, cfg),
+      problems: verdictProblems(evidence, request, action_ref, now, req),
       evidence_id: isRecord(evidence) && typeof evidence.id === 'string' ? evidence.id : null,
     }),
   }

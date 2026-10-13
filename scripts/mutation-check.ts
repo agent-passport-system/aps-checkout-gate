@@ -63,15 +63,39 @@ const mutants: Mutant[] = [
   },
   {
     name: '(E3) a malformed check result is trusted',
-    edits: [{ file: 'src/evidence.ts', find: 'if (!isRecord(r) || !Array.isArray(r.problems) || !r.problems.every(isProblem) ||', replace: 'if (false /* MUTANT (E3) */ &&' }],
+    edits: [{ file: 'src/evidence.ts', find: '  if (r === null) {', replace: '  if (false /* MUTANT (E3) */) {' }],
   },
   {
     name: '(E4) all supplied evidence is copied, so unused evidence can change the decision',
-    edits: [{ file: GATE, find: 'if (this.evidenceChecks.length > 0) {\n        const supplied', replace: 'if (input?.evidence !== undefined) { evidence.all = input.evidence }\n      if (this.evidenceChecks.length > 0) {\n        const supplied' }],
+    edits: [{ file: GATE, find: 'if (this.evidenceChecks.length > 0) {\n        const supplied', replace: 'if (input?.evidence !== undefined) { evidence.set(\'all\', structuredClone(input.evidence)) /* MUTANT (E4) */ }\n      if (this.evidenceChecks.length > 0) {\n        const supplied' }],
   },
   {
     name: '(E5) each check gets the gate\'s request object instead of a copy',
     edits: [{ file: GATE, find: 'runCheck(c, { request: structuredClone(request),', replace: 'runCheck(c, { request /* MUTANT (E5) */,' }],
+  },
+  // Hardening after the 12f5023 review (test/14).
+  {
+    name: '(H1) evidence is not copied apart from the input: a check can reach the caller\'s request',
+    edits: [{ file: GATE, find: 'evidence.set(c.name, v === undefined ? undefined : structuredClone(v))', replace: 'evidence.set(c.name, v) // MUTANT (H1)' }],
+  },
+  {
+    name: '(H2) reserved check names accepted: __proto__ resolves through Object.prototype',
+    edits: [{ file: 'src/evidence.ts', find: 'if (RESERVED(name)) throw', replace: 'if (false /* MUTANT (H2) */) throw' }],
+  },
+  {
+    name: '(H3) the check result is inspected outside the guard, so a throwing getter escapes decide()',
+    edits: [
+      { file: 'src/evidence.ts', find: '    r = normalize(c.check({ ...input, evidence }))', replace: '    r = c.check({ ...input, evidence }) as never // MUTANT (H3)' },
+      { file: 'src/evidence.ts', find: '  if (r === null) {', replace: '  r = normalize(r) // MUTANT (H3)\n  if (r === null) {' },
+    ],
+  },
+  {
+    name: '(H4) verdict time limits not validated: a string limit turns freshness off',
+    edits: [{ file: 'src/verdict.ts', find: "if (typeof n !== 'number' || !Number.isFinite(n) || n < 0) throw", replace: 'if (false /* MUTANT (H4) */) throw' }],
+  },
+  {
+    name: '(H5) proceedOn not validated: a string matches by substring',
+    edits: [{ file: 'src/verdict.ts', find: "if (!Array.isArray(proceedOn) || proceedOn.length === 0 || !proceedOn.every(v => typeof v === 'string' && v.length > 0)) {", replace: 'if (false /* MUTANT (H5) */) {' }],
   },
   {
     name: '(D1) a refusal without a usable delegation id cites an invalid delegation_ref again (decide() throws)',
