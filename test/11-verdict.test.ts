@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { requestDigest } from '../src/request.ts'
 import type { PurchaseRequest } from '../src/request.ts'
-import { eventId, secp256k1ForTests as C, verdictProblems } from '../src/verdict.ts'
+import { eventId, secp256k1ForTests as C, verdictCheck, verdictProblems } from '../src/verdict.ts'
 import type { NostrEvent } from '../src/verdict.ts'
 import { control, expectRefusal, world } from './helpers.ts'
 
@@ -40,67 +40,67 @@ function verdictFor(req: PurchaseRequest, at: number, over: Record<string, unkno
 
 function setup(t: { after(fn: () => void): void }, proceedOn?: string[]) {
   const w = world(); t.after(() => w.cleanup())
-  const gate = w.open({ requireVerdict: { verifierPubkey: REVIEWER.pub, ...(proceedOn ? { proceedOn } : {}) } })
+  const gate = w.open({ evidenceChecks: [verdictCheck({ verifierPubkey: REVIEWER.pub, ...(proceedOn ? { proceedOn } : {}) })] })
   const grant = w.grant()
   return { w, gate, grant }
 }
 
-test('11. without requireVerdict the gate ignores verdicts entirely', t => {
+test('11. without evidence checks the gate ignores evidence entirely', t => {
   const w = world(); t.after(() => w.cleanup())
   const gate = w.open()
   const grant = w.grant()
   control(w, gate, grant)
   const r = gate.decide(w.input(w.request(), grant))
   assert.equal(r.verdict, 'permit')
-  assert.equal('verdict_event_id' in r.record.evidence.policy_input, false, 'records are unchanged when the requirement is off')
+  assert.equal('required_evidence' in r.record.evidence.policy_input, false, 'records are unchanged when no check is configured')
 })
 
 test('11. a valid verdict on this exact request permits, and the permit cites it', t => {
   const { w, gate, grant } = setup(t)
   const req = w.request()
   const ev = verdictFor(req, w.clock.t)
-  const r = gate.decide({ ...w.input(req, grant), verdict: ev })
+  const r = gate.decide({ ...w.input(req, grant), evidence: { verdict: ev } })
   assert.equal(r.verdict, 'permit', r.record.evidence.decision_context.reasons.join(' | '))
-  assert.equal(r.record.evidence.policy_input.verdict_event_id, ev.id)
+  assert.deepEqual(r.record.evidence.policy_input.required_evidence, [{ check: 'verdict', evidence_id: ev.id }])
   assert.deepEqual(w.verifies(r.record), { valid: true, problems: [] })
 })
 
 test('11. no verdict is refused', t => {
   const { w, gate, grant } = setup(t)
-  expectRefusal(w, gate, w.input(w.request(), grant), 'verdict_missing')
+  expectRefusal(w, gate, w.input(w.request(), grant), 'evidence_missing')
 })
 
 test('11. a verdict on a different request is refused', t => {
   const { w, gate, grant } = setup(t)
   const req = w.request()
   const ev = verdictFor(w.request({ order_ref: 'some-other-order' }), w.clock.t)
-  expectRefusal(w, gate, { ...w.input(req, grant), verdict: ev }, 'verdict_request_mismatch')
+  expectRefusal(w, gate, { ...w.input(req, grant), evidence: { verdict: ev } }, 'verdict_request_mismatch')
 })
 
 test('11. a verdict naming another agent is refused', t => {
   const { w, gate, grant } = setup(t)
   const req = w.request()
-  expectRefusal(w, gate, { ...w.input(req, grant), verdict: verdictFor(req, w.clock.t, { action_binding_agent_id: 'did:example:someone' }) }, 'verdict_agent_mismatch')
+  expectRefusal(w, gate, { ...w.input(req, grant), evidence: { verdict: verdictFor(req, w.clock.t, { action_binding_agent_id: 'did:example:someone' }) } }, 'verdict_agent_mismatch')
 })
 
 test('11. reject is refused; approve_with_concerns only when the store allows it', t => {
   const { w, gate, grant } = setup(t)
   const req = w.request()
-  expectRefusal(w, gate, { ...w.input(req, grant), verdict: verdictFor(req, w.clock.t, { verdict: 'reject' }) }, 'verdict_not_allowed')
+  expectRefusal(w, gate, { ...w.input(req, grant), evidence: { verdict: verdictFor(req, w.clock.t, { verdict: 'reject' }) } }, 'verdict_not_allowed')
   const req2 = w.request()
-  expectRefusal(w, gate, { ...w.input(req2, grant), verdict: verdictFor(req2, w.clock.t, { verdict: 'approve_with_concerns' }) }, 'verdict_not_allowed')
+  expectRefusal(w, gate, { ...w.input(req2, grant), evidence: { verdict: verdictFor(req2, w.clock.t, { verdict: 'approve_with_concerns' }) } }, 'verdict_not_allowed')
   const lax = setup(t, ['approve', 'approve_with_concerns'])
   const req3 = lax.w.request()
-  const r = lax.gate.decide({ ...lax.w.input(req3, lax.grant), verdict: verdictFor(req3, lax.w.clock.t, { verdict: 'approve_with_concerns' }) })
+  const r = lax.gate.decide({ ...lax.w.input(req3, lax.grant), evidence: { verdict: verdictFor(req3, lax.w.clock.t, { verdict: 'approve_with_concerns' }) } })
   assert.equal(r.verdict, 'permit')
 })
 
 test('11. a stale verdict and a verdict from the future are refused', t => {
   const { w, gate, grant } = setup(t)
   const req = w.request()
-  expectRefusal(w, gate, { ...w.input(req, grant), verdict: verdictFor(req, w.clock.t - 11 * 60_000) }, 'verdict_stale')
+  expectRefusal(w, gate, { ...w.input(req, grant), evidence: { verdict: verdictFor(req, w.clock.t - 11 * 60_000) } }, 'verdict_stale')
   const req2 = w.request()
-  expectRefusal(w, gate, { ...w.input(req2, grant), verdict: verdictFor(req2, w.clock.t + 5 * 60_000) }, 'verdict_from_future')
+  expectRefusal(w, gate, { ...w.input(req2, grant), evidence: { verdict: verdictFor(req2, w.clock.t + 5 * 60_000) } }, 'verdict_from_future')
 })
 
 test('11. a bad signature, edited content and an untrusted key are refused', t => {
@@ -108,11 +108,11 @@ test('11. a bad signature, edited content and an untrusted key are refused', t =
   const req = w.request()
   const ev = verdictFor(req, w.clock.t)
   const badSig = { ...ev, sig: ev.sig.slice(0, 10) + (ev.sig[10] === '0' ? '1' : '0') + ev.sig.slice(11) }
-  expectRefusal(w, gate, { ...w.input(req, grant), verdict: badSig }, 'verdict_invalid')
+  expectRefusal(w, gate, { ...w.input(req, grant), evidence: { verdict: badSig } }, 'verdict_invalid')
   const edited = { ...ev, content: ev.content.replace('"approve"', '"approve" ') }
-  expectRefusal(w, gate, { ...w.input(w.request(), grant), verdict: edited }, 'verdict_invalid')
+  expectRefusal(w, gate, { ...w.input(w.request(), grant), evidence: { verdict: edited } }, 'verdict_invalid')
   const req3 = w.request()
-  expectRefusal(w, gate, { ...w.input(req3, grant), verdict: verdictFor(req3, w.clock.t, {}, OTHER) }, 'verdict_untrusted_key')
+  expectRefusal(w, gate, { ...w.input(req3, grant), evidence: { verdict: verdictFor(req3, w.clock.t, {}, OTHER) } }, 'verdict_untrusted_key')
 })
 
 test('11. a real invinoveritas /review verdict binds a request the same way (live vector, 2026-10-12)', () => {

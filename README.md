@@ -58,34 +58,60 @@ When a gate opens its file, any `reserved` row older than the recovery window (d
 
 `src/server.ts` is a thin `node:http` wrapper (`/decide`, `/outcome`, `/reconcile`, `/decisions/<receipt_id>`, `/reservations/<reservation_id>`, `/budget?grant_id=`, `/gate-key`) bound to 127.0.0.1 with no caller authentication.
 
-## Optional: require an independent verdict
+## Optional: required evidence
 
-A store can make a permit also depend on an independent signed verdict on the exact request (#199: "independent pre-payment
-verdict bound to merchant, order, amount, currency and agent"). Off by default; when it is off the gate and its records are
-unchanged.
+A store can make a permit also depend on evidence beyond the delegation and the intent. Off by default; with no checks
+configured the gate never reads `evidence` and its records are unchanged.
 
 ```ts
-Gate.open({ ...config, requireVerdict: { verifierPubkey: '<reviewer BIP-340 x-only key>', proceedOn: ['approve'], maxAgeMs: 600_000 } })
-gate.decide({ request, delegation, intent, verdict })   // verdict: the reviewer's signed NIP-01 event
+Gate.open({ ...config, evidenceChecks: [check1, check2] })
+gate.decide({ request, delegation, intent, evidence: { [check.name]: ... } })
 ```
 
-The check is offline, in `src/verdict.ts` (BIP-340 verification over secp256k1 with no dependency). A verdict allows the
-permit only if all of these hold, otherwise the refusal names the first failure:
+A check (`src/evidence.ts`) is `{ name, check(input) }`. It gets a copy of the request, its own evidence (supplied under its
+name), `action_ref` (the JCS digest of the request), the agent and the gate's clock, and returns
+`{ problems: [{ code, message }], evidence_id }`. Every check must pass. The gate refuses before any budget is reserved when:
+
+| case | refusal |
+| --- | --- |
+| no evidence under a configured check's name | `evidence_missing` |
+| the check throws, or returns anything but `{ problems, evidence_id }` | `evidence_check_failed` |
+| the check returns problems | those problems |
+
+Evidence under a name no configured check uses is never read or copied, so it cannot change the decision. Each decision of a
+gate with checks records `policy_input.required_evidence`: per check, its name and the `evidence_id` it returned. Checks run
+offline; the gate calls nothing. `test/13-evidence-hook.test.ts` covers the hook.
+
+### First adapter: an independent verdict on the exact request
+
+`verdictCheck` in `src/verdict.ts` requires an independent signed verdict on the request (#199: "independent pre-payment
+verdict bound to merchant, order, amount, currency and agent").
+
+```ts
+Gate.open({ ...config, evidenceChecks: [verdictCheck({ verifierPubkey: '<reviewer BIP-340 x-only key>', proceedOn: ['approve'], maxAgeMs: 600_000 })] })
+gate.decide({ request, delegation, intent, evidence: { verdict } })   // verdict: the reviewer's signed NIP-01 event
+```
+
+The server takes the same as `requireVerdict` in its config and `evidence.verdict` in the `/decide` body. The verification key
+is pinned in config. BIP-340 verification over secp256k1 is in `src/verdict.ts` with no dependency. It accepts only a 32-byte
+message, which is what NIP-01 signs (the event id); BIP-340 itself allows other lengths. `test/12-bip340-vectors.test.ts` runs
+the official BIP-340 vectors (bitcoin/bips at `200f9b26fe0a2f235a2af8b30c4be9f12f6bc9cb`, `bip-0340/test-vectors.csv`,
+sha256 `34c9d1d9…851c2d`, checked by the test): all 15 with a 32-byte message give the expected result, and the 4 with
+another length are refused. A verdict allows the permit only if all of these hold:
 
 | check | refusal |
 | --- | --- |
-| a verdict was supplied | `verdict_missing` |
 | it is signed by the configured reviewer key | `verdict_untrusted_key` |
 | the NIP-01 id recomputes and the BIP-340 signature verifies | `verdict_invalid` |
 | its `action_binding_args_hash` is `"sha256:" + action_ref`, the same JCS digest of the request this gate uses | `verdict_request_mismatch` |
 | its `action_binding_agent_id` is the request's `agent_id` | `verdict_agent_mismatch` |
 | its verdict is in `proceedOn` (default `approve`) | `verdict_not_allowed` |
-| its `verified_at` is within `maxAgeMs` (default 10 minutes) and not ahead of the clock | `verdict_stale`, `verdict_from_future` |
+| its `verified_at`, against the gate's clock, is within `maxAgeMs` (default 10 minutes) and not more than `maxSkewMs` (default 30 seconds) ahead | `verdict_stale`, `verdict_from_future` |
 
-A permit records the verdict's event id in `policy_input.verdict_event_id`. `test/11-verdict.test.ts` covers each refusal and
-includes a real verdict from invinoveritas `/review` (`test/vectors/invinoveritas-verdict-b2cd036a.json`), whose
-`action_binding_args_hash` equals this gate's `requestDigest()` for the same request. `npm run mutation` removes each of the
-eight checks in turn.
+A decision records the verdict's event id as its `evidence_id`. `test/11-verdict.test.ts` covers each refusal with signed
+fixtures and no network, and includes a real verdict from invinoveritas `/review`
+(`test/vectors/invinoveritas-verdict-b2cd036a.json`), whose `action_binding_args_hash` equals this gate's `requestDigest()` for
+the same request. `npm run mutation` removes each verdict check and each hook rule in turn.
 
 A passing verdict establishes only that the configured reviewer signed a verdict in `proceedOn` for exactly this request and
 agent, recently. It does not establish that the verdict is right, that the reviewer saw more than the request, or anything about

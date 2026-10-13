@@ -17,8 +17,8 @@ const GATE = 'src/gate.ts'
 const mutants: Mutant[] = [
   // Optional required evidence: an independent signed verdict on the request (src/verdict.ts, test/11).
   {
-    name: '(V1) verdict requirement ignored: a configured gate permits without one',
-    edits: [{ file: GATE, find: 'if (this.requireVerdict !== undefined) {', replace: 'if (false /* MUTANT (V1) */) {' }],
+    name: '(V1) evidence checks ignored: a configured gate permits without its evidence',
+    edits: [{ file: GATE, find: 'if (this.evidenceChecks.length > 0) {\n        // Required evidence', replace: 'if (false /* MUTANT (V1) */) {\n        // Required evidence' }],
   },
   {
     name: '(V2) request binding removed: a verdict on any request passes',
@@ -47,6 +47,31 @@ const mutants: Mutant[] = [
   {
     name: '(V8) verdict age check removed',
     edits: [{ file: 'src/verdict.ts', find: '} else if (now.getTime() - verifiedMs > (cfg.maxAgeMs ?? DEFAULT_VERDICT_MAX_AGE_MS)) {', replace: '} else if (false /* MUTANT (V8) */) {' }],
+  },
+  {
+    name: '(V9) future-dated verdict check removed',
+    edits: [{ file: 'src/verdict.ts', find: '} else if (verifiedMs - now.getTime() > (cfg.maxSkewMs ?? DEFAULT_VERDICT_MAX_SKEW_MS)) {', replace: '} else if (false /* MUTANT (V9) */) {' }],
+  },
+  // The evidence hook (src/evidence.ts, test/13).
+  {
+    name: '(E1) missing evidence passed to the check instead of refused',
+    edits: [{ file: 'src/evidence.ts', find: 'if (evidence === undefined) {', replace: 'if (false /* MUTANT (E1) */) {' }],
+  },
+  {
+    name: '(E2) a check that throws is not caught',
+    edits: [{ file: 'src/evidence.ts', find: '  } catch (e) {\n    return', replace: '  } catch (e) {\n    throw e /* MUTANT (E2) */\n    return' }],
+  },
+  {
+    name: '(E3) a malformed check result is trusted',
+    edits: [{ file: 'src/evidence.ts', find: 'if (!isRecord(r) || !Array.isArray(r.problems) || !r.problems.every(isProblem) ||', replace: 'if (false /* MUTANT (E3) */ &&' }],
+  },
+  {
+    name: '(E4) all supplied evidence is copied, so unused evidence can change the decision',
+    edits: [{ file: GATE, find: 'if (this.evidenceChecks.length > 0) {\n        const supplied', replace: 'if (input?.evidence !== undefined) { evidence.all = input.evidence }\n      if (this.evidenceChecks.length > 0) {\n        const supplied' }],
+  },
+  {
+    name: '(E5) each check gets the gate\'s request object instead of a copy',
+    edits: [{ file: GATE, find: 'runCheck(c, { request: structuredClone(request),', replace: 'runCheck(c, { request /* MUTANT (E5) */,' }],
   },
   // The six properties spec item 8 names.
   {

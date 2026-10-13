@@ -1,7 +1,7 @@
 // Thin node:http wrapper over the gate core. Binds to 127.0.0.1 only and has
 // no caller authentication. It is for local experiments, not exposure.
 //
-//   POST /decide     {request, delegation, intent, verdict?}  -> {decision, verdict, reason, reservation_id, replay}
+//   POST /decide     {request, delegation, intent, evidence?} -> {decision, verdict, reason, reservation_id, replay}
 //   POST /outcome    {reservation_id, outcome, confirmation?}  -> OutcomeResult
 //   POST /reconcile  {reservation_id, outcome, confirmation}   -> OutcomeResult
 //   GET  /decisions/<receipt_id>                              -> {receipt, evidence}
@@ -11,6 +11,7 @@
 //
 // Run: node src/server.ts <config.json>
 // config.json: {dbPath, gate: {id, role, publicKey, privateKey}, directory, port?, requireVerdict?: {verifierPubkey, proceedOn?, maxAgeMs?}}
+// requireVerdict configures the verdictCheck adapter (src/verdict.ts); its evidence goes in the body as evidence.verdict.
 
 import { readFileSync } from 'node:fs'
 import { createServer } from 'node:http'
@@ -18,6 +19,7 @@ import type { IncomingMessage, Server, ServerResponse } from 'node:http'
 import { resolve } from 'node:path'
 import { Gate } from './gate.ts'
 import { isRecord } from './request.ts'
+import { verdictCheck } from './verdict.ts'
 
 const MAX_BODY = 64 * 1024
 
@@ -91,7 +93,8 @@ if (process.argv[1] && resolve(process.argv[1]) === import.meta.filename) {
     process.exit(2)
   }
   const c = JSON.parse(readFileSync(path, 'utf8'))
-  const gate = Gate.open({ dbPath: c.dbPath, gate: c.gate, directory: c.directory, recoveryWindowMs: c.recoveryWindowMs, requireVerdict: c.requireVerdict })
+  const gate = Gate.open({ dbPath: c.dbPath, gate: c.gate, directory: c.directory, recoveryWindowMs: c.recoveryWindowMs,
+    evidenceChecks: c.requireVerdict ? [verdictCheck(c.requireVerdict)] : undefined })
   if (gate.recovered.length > 0) console.log(`startup recovery: ${gate.recovered.length} reservation(s) moved to unresolved`)
   const port = typeof c.port === 'number' ? c.port : 8787
   createGateServer(gate).listen(port, '127.0.0.1', () => console.log(`checkout gate on http://127.0.0.1:${port}`))

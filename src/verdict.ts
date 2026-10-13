@@ -16,6 +16,7 @@
 
 import { createHash } from 'node:crypto'
 import { isRecord } from './request.ts'
+import type { EvidenceCheck, Problem } from './evidence.ts'
 
 export interface VerdictRequirement {
   /** The reviewer's BIP-340 x-only public key, 64 hex chars. */
@@ -40,8 +41,6 @@ export interface NostrEvent {
   content: string
   sig: string
 }
-
-interface Problem { code: string; message: string }
 
 // ---- BIP-340 verification over secp256k1, BigInt, no dependencies ----
 
@@ -99,7 +98,8 @@ function taggedHash(tag: string, data: Uint8Array): Buffer {
 }
 const toBig = (b: Uint8Array): bigint => BigInt('0x' + Buffer.from(b).toString('hex'))
 
-/** BIP-340 verify: 32-byte message, 32-byte x-only key, 64-byte signature. */
+/** BIP-340 verify, restricted to a 32-byte message (BIP-340 allows any length; NIP-01 signs the 32-byte event id, so a
+ *  message of any other length returns false here). 32-byte x-only key, 64-byte signature. */
 export function schnorrVerify(msg: Uint8Array, pubkey: Uint8Array, sig: Uint8Array): boolean {
   if (msg.length !== 32 || pubkey.length !== 32 || sig.length !== 64) return false
   const pt = liftX(toBig(pubkey))
@@ -169,3 +169,15 @@ export function verdictProblems(ev: unknown, req: { agent_id: string }, actionRe
 
 /** Curve primitives for tests that need to SIGN a verdict (the gate itself only verifies). */
 export const secp256k1ForTests = { G, N, mul, taggedHash, toBig }
+
+/** The verdict as an evidence check (src/evidence.ts): supply the event as DecideInput.evidence.verdict. */
+export function verdictCheck(cfg: VerdictRequirement, name = 'verdict'): EvidenceCheck {
+  if (!HEX64.test(cfg.verifierPubkey.toLowerCase())) throw new Error('verifierPubkey must be a 64-hex BIP-340 x-only key')
+  return {
+    name,
+    check: ({ request, evidence, action_ref, now }) => ({
+      problems: verdictProblems(evidence, request, action_ref, now, cfg),
+      evidence_id: isRecord(evidence) && typeof evidence.id === 'string' ? evidence.id : null,
+    }),
+  }
+}

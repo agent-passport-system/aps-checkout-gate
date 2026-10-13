@@ -48,8 +48,8 @@ export interface DecisionEvidence {
     intent_receipt_id: string | null
     /** False when the line items carried no prices, so the amount was not cross-checked. Null when not evaluated. */
     items_priced: boolean | null
-    /** Present only when the gate requires an independent verdict: the id of the verdict event it was given, or null. */
-    verdict_event_id?: string | null
+    /** Present only when the gate has evidence checks: per check, its name and the id of the evidence it checked, or null. */
+    required_evidence?: { check: string; evidence_id: string | null }[]
   }
   decision_context: {
     profile: typeof CONTEXT_PROFILE
