@@ -111,7 +111,11 @@ another length are refused. A verdict allows the permit only if all of these hol
 A decision records the verdict's event id as its `evidence_id`. `test/11-verdict.test.ts` covers each refusal with signed
 fixtures and no network, and includes a real verdict from invinoveritas `/review`
 (`test/vectors/invinoveritas-verdict-b2cd036a.json`), whose `action_binding_args_hash` equals this gate's `requestDigest()` for
-the same request. `npm run mutation` removes each verdict check and each hook rule in turn.
+the same request. That request's `merchant_id`, `merchant:example-store`, is not one scope segment, so `decide()` refuses it as
+`malformed_request` before any evidence is read. `test/16-live-verdict-permit.test.ts` keeps it as that refusal regression and
+runs a second real verdict (`test/vectors/invinoveritas-verdict-64607ef8.json`, signed 2026-10-14 over the same order with
+`merchant_id` `example-store`) through `decide()` end to end. The gate permits, reserves and signs a permit citing the verdict's
+event id. Synthetic order, no payment. `npm run mutation` removes each verdict check and each hook rule in turn.
 
 A passing verdict establishes only that the configured reviewer signed a verdict in `proceedOn` for exactly this request and
 agent, recently. It does not establish that the verdict is right, that the reviewer saw more than the request, or anything about

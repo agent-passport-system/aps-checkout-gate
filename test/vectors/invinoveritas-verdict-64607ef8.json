@@ -1,0 +1,45 @@
+{
+  "_note": "A real signed verdict from invinoveritas POST /review (sign=true, 2026-10-14) on the same synthetic order as invinoveritas-verdict-b2cd036a.json, merchant_id changed from merchant:example-store to example-store so it fits one scope segment and can get a permit through decide() (aeoess, issue #199, issuecomment-6160820963). action_ref = requestDigest(request); the verdict event content's action_binding_args_hash is 'sha256:' + action_ref. Verdict approve_with_concerns. Verify the key independently: https://api.babyblueviper.com/.well-known/verifier-keys.json",
+  "request": {
+    "request_id": "req-0001",
+    "agent_id": "agent:demo-shopper",
+    "merchant_id": "example-store",
+    "order_ref": "order-1042",
+    "items": [
+      {
+        "sku": "TEE-BLK-M",
+        "quantity": 2,
+        "unit_price_minor": 1500
+      }
+    ],
+    "amount_minor": 3000,
+    "currency": "USD"
+  },
+  "action_ref": "b62ff0f61f58aad24333ae6380584d589719b89a6515e5405829a1097f03f75b",
+  "event": {
+    "id": "64607ef8b92a956e052adac8b99ade63af2abf91b9b1971f510880304fba90fd",
+    "pubkey": "6786e18a864893a900bd9858e650f67ccc3513f248fed374b591e2ff6922fbb7",
+    "created_at": 1791954953,
+    "kind": 30078,
+    "tags": [
+      [
+        "d",
+        "invinoveritas-proof-a1c296f9b68393b29b52389225bb853142ff0c60fcc828704c308c1b8fd1d4a4-1791954953-97bedf9c"
+      ],
+      [
+        "t",
+        "invinoveritas"
+      ],
+      [
+        "t",
+        "proof"
+      ],
+      [
+        "schema",
+        "invinoveritas.verdict_proof.v1"
+      ]
+    ],
+    "content": "{\"action_binding_agent_id\":\"agent:demo-shopper\",\"action_binding_args_hash\":\"sha256:b62ff0f61f58aad24333ae6380584d589719b89a6515e5405829a1097f03f75b\",\"action_binding_nonce\":\"69d062256148604797c9e5e5e27ae91a\",\"action_binding_tool_hash\":\"sha256:63f0de4dcf85d0d514ad9679a9fe976d13ace47f46c382f538a6050aeed74451\",\"artifact_hash\":\"a1c296f9b68393b29b52389225bb853142ff0c60fcc828704c308c1b8fd1d4a4\",\"artifact_type\":\"onchain_action\",\"canonicalization_version\":\"rfc8785.v1\",\"confidence\":0.9,\"conformance_suite\":\"https://github.com/babyblueviper1/preaction-governance-conformance\",\"context_provenance\":\"caller_asserted_unverified\",\"decision_ref\":\"sha256:9887d3273937f9036fc23bb114172b127ac8ea81a43765867b98922179c03362\",\"decision_ref_preimage_fields\":[\"artifact_hash\",\"artifact_type\",\"policy_version\",\"verdict\",\"source_class\",\"vantage_limitation\",\"related_decision_ref\",\"intended_audience\",\"confidentiality_tier\",\"disclosed_summary\",\"intended_verifier\",\"policy_commitment\",\"verified_at\",\"registry_as_of\",\"registry_snapshot_sha256\",\"action_binding_tool_hash\",\"action_binding_args_hash\",\"action_binding_agent_id\",\"action_binding_nonce\",\"freshness_beacon_hash\",\"epistemic_basis\",\"external_evidence_hash\",\"canonicalization_version\",\"related_claims_hash\",\"related_claims_result\",\"related_claims_comparison_version\",\"mediator_attestation_hash\"],\"decision_ref_preimage_rule\":\"every name in decision_ref_preimage_fields is a key in the hashed preimage object, always -- absent fields (e.g. vantage_limitation when not applicable) are present as JSON null, never omitted from the object.\",\"engine_generation\":1,\"epistemic_basis\":null,\"freshness_beacon\":{\"block_time\":1791954443,\"hash\":\"0000000000000000000067dceb78afa708e1fa072aacfe837d9a869ccb4b5ee1\",\"height\":971354,\"source\":\"bitcoin\"},\"freshness_beacon_hash\":\"sha256:d8f429c586b7e4ddff4a06f1275d874a75dec853bb57857128a0e1dd8b361c58\",\"independent_nodes\":[\"https://invinoveritas-castra.babyblueviper.workers.dev/verify\",\"https://babyblueviper1--2aba75da693711f185891607ee4eb77e.web.val.run\"],\"key_id\":\"6786e18a864893a900bd9858e650f67ccc3513f248fed374b591e2ff6922fbb7\",\"platform\":\"invinoveritas\",\"policy_commitment\":\"sha256:ce58857dea9f9851394bd3126f9aca28b8ef7cc95cc3562ab0e4a863f8be73fe\",\"policy_commitment_inputs\":{\"conformance_suite_commit\":\"e90948ed3eb9d36eb1d0997ea4d02045e28a405a\",\"conformance_suite_repo\":\"babyblueviper1/preaction-governance-conformance\",\"rubric_doc_path\":\"docs/policy_spec/invinoveritas.review.v12.md\",\"rubric_sha256\":\"bb74afa68bd5e8b1ca1038d8f0c8cd9a0d1f83888a7ea7df7c551f579a974180\"},\"policy_version\":\"invinoveritas.review.v22\",\"registry_as_of\":null,\"registry_snapshot_sha256\":null,\"related_claims_result\":\"not_supplied\",\"review_model_hash\":\"deda3dc02a1d1575f15d5c9f9b3e31cf0c768a55508c31e7ff0f4fc8f33fc669\",\"review_prompt_template_hash\":\"13a72a4c1e3a99b969ac46b724eceef6620716292f2b730f19915cdd469c1e31\",\"schema\":\"invinoveritas.verdict_proof.v1\",\"source_class\":\"agent_reported\",\"summary_hash\":\"07e14b66e136a4891f2f97e13c7b545686b70a5fa1812dd97c8114093b1b2bbe\",\"vantage_limitation\":\"source_class=agent_reported: nothing external confirms this /review call happened, or could not be bypassed, before the action it governs. Recomputability makes this record internally consistent (an occurrence claim) — it is not an absence/completeness claim, which needs a vantage the acting agent doesn't control. This note is derived from source_class and artifact_type only: it does not establish that the source classification is true or that execution cannot bypass this check. Treat this proof as advisory input, not standalone authorization, until paired with an independent mediation-point integration.\",\"verdict\":\"approve_with_concerns\",\"verified_at\":1791954952,\"verifier_keys\":\"https://api.babyblueviper.com/.well-known/verifier-keys.json\",\"verifier_pubkey\":\"6786e18a864893a900bd9858e650f67ccc3513f248fed374b591e2ff6922fbb7\",\"verify_how\":\"Easiest: install the offline verifier above and recompute locally. Or POST this proof's signed `event` to verify_url (or an independent_node), OR run NIP-01 yourself: recompute the Nostr event id = sha256([0,pubkey,created_at,kind,tags,content]), verify the schnorr signature against verifier_pubkey. valid ⇒ invinoveritas issued this, untampered. No trust required.\",\"verify_offline\":\"npm i invinoveritas-verify  ·  pip install invinoveritas-verify  — recompute this proof on your own machine against verifier_pubkey; you never have to call us.\",\"verify_url\":\"https://api.babyblueviper.com/verify-proof\"}",
+    "sig": "9a5bdef559ecb3e6d5f33e948460abe2c1fe113d0ca38fc85f2ec203785fa00798f1f983b31432de75b9fb2e49d239bced7b04da370e89d1ef64425b2c559052"
+  }
+}
