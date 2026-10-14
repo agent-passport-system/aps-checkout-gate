@@ -117,6 +117,42 @@ A passing verdict establishes only that the configured reviewer signed a verdict
 agent, recently. It does not establish that the verdict is right, that the reviewer saw more than the request, or anything about
 payment or fulfilment.
 
+### Second adapter: a store-configured per-order cap
+
+`priorsealLimitCheck` in `src/priorseal-limit.ts` is a sandbox example of a
+separate per-order ceiling, independent of the APS grant's `per_action` and
+cumulative budget. The store configures the cap and supplies the same cap
+snapshot as `evidence.priorseal_limit` for each decision:
+
+```ts
+const orderCap = {
+  cap_id: 'store-order-cap-v1',
+  merchant_id: 'example-store',
+  currency: 'USD',
+  max_amount_minor: 5_000,
+}
+
+Gate.open({
+  ...config,
+  evidenceChecks: [priorsealLimitCheck(orderCap)],
+})
+gate.decide({
+  request,
+  delegation,
+  intent,
+  evidence: { priorseal_limit: orderCap },
+})
+```
+
+The adapter requires exact cap-snapshot equality, merchant and currency
+matches, and an amount at or below the ceiling. It binds its recorded
+`evidence_id` to the configured cap and the gate's exact `action_ref`. The
+synthetic tests cover below, at and above the cap plus merchant, currency and
+cap-snapshot mismatches. No foreign-exchange conversion, second reservation,
+payment or fulfilment claim is made. This is local configuration logic; it does
+not call PriorSeal or verify a signed PriorSeal artifact. A real store must
+provide its separate cap before this can be used beyond the sandbox.
+
 ## Run it
 
 Needs Node 24. Node runs the TypeScript directly, there is no build step, and state lives in the built in `node:sqlite`. The only runtime dependency is `agent-passport-system` pinned to 7.2.1. TypeScript 5.9.3 and `@types/node` 24.10.1 are pinned development dependencies used only by `npm run typecheck`.
