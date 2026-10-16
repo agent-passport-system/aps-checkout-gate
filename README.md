@@ -119,10 +119,11 @@ payment or fulfilment.
 
 ### Second adapter: a store-configured per-order cap
 
-`priorsealLimitCheck` in `src/priorseal-limit.ts` is a sandbox example of a
-separate per-order ceiling, independent of the APS grant's `per_action` and
-cumulative budget. The store configures the cap and supplies the same cap
-snapshot as `evidence.priorseal_limit` for each decision:
+`storeOrderCapCheck` in `src/priorseal-limit.ts` is a sandbox example of a
+local, separate per-order ceiling, independent of the APS grant's `per_action`
+and cumulative budget. It is not a signed PriorSeal receipt or decision. The
+store configures the cap and supplies the same cap snapshot as
+`evidence.store_order_cap` for each decision:
 
 ```ts
 const orderCap = {
@@ -134,23 +135,30 @@ const orderCap = {
 
 Gate.open({
   ...config,
-  evidenceChecks: [priorsealLimitCheck(orderCap)],
+  evidenceChecks: [storeOrderCapCheck(orderCap)],
 })
 gate.decide({
   request,
   delegation,
   intent,
-  evidence: { priorseal_limit: orderCap },
+  evidence: { store_order_cap: orderCap },
 })
 ```
 
 The adapter requires exact cap-snapshot equality, merchant and currency
-matches, and an amount at or below the ceiling. It binds its recorded
-`evidence_id` to the configured cap and the gate's exact `action_ref`. The
-synthetic tests cover below, at and above the cap plus merchant, currency and
-cap-snapshot mismatches. No foreign-exchange conversion, second reservation,
-payment or fulfilment claim is made. This is local configuration logic; it does
-not call PriorSeal or verify a signed PriorSeal artifact. A real store must
+matches, and an amount at or below the ceiling. Exact equality prevents a
+caller from presenting an older snapshot after the store changes its cap; it
+does not authenticate the configuration. Its recorded `evidence_id` commits to
+the whole configured cap and the gate's exact `action_ref`. The synthetic tests
+cover below, at and above the cap; merchant, currency and cap-snapshot
+mismatches; a changed cap producing a changed `evidence_id`; and rejection of
+a stale snapshot after a cap change. Currency handling only validates the
+three-upper-case-letter representation and exact equality with the configured
+cap. It does not validate ISO 4217 membership or perform foreign-exchange
+conversion. No second reservation, payment or fulfilment claim is made. This
+is local configuration logic; it does not call PriorSeal or verify a signed
+PriorSeal artifact. `priorsealLimitCheck` remains only as a compatibility alias
+for the initial PR API and has the same local-only meaning. A real store must
 provide its separate cap before this can be used beyond the sandbox.
 
 ## Run it
