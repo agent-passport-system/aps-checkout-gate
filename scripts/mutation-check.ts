@@ -15,6 +15,31 @@ interface Mutant { name: string; edits: Edit[] }
 const GATE = 'src/gate.ts'
 
 const mutants: Mutant[] = [
+  // Optional settlement receipt on 'placed' (src/settlement.ts, test/17).
+  {
+    name: "(R1) settlement requirement ignored: 'placed' commits without a receipt",
+    edits: [{ file: GATE, find: 'if (cfg === null || row.unit !== spendUnit(cfg.unit)) return null', replace: 'return null /* MUTANT (R1) */' }],
+  },
+  {
+    name: '(R2) order binding removed: a receipt for any order commits this one',
+    edits: [{ file: 'src/settlement.ts', find: "if (c.terms_hash !== 'sha256:' + ctx.action_ref) {", replace: 'if (false /* MUTANT (R2) */) {' }],
+  },
+  {
+    name: '(R3) one-payment-one-order removed: one settlement commits several orders',
+    edits: [{ file: GATE, find: "if (used && used.reservation_id !== row.reservation_id) return 'receipt_settlement_reused'", replace: '/* MUTANT (R3) */' }],
+  },
+  {
+    name: '(R4) amount check removed',
+    edits: [{ file: 'src/settlement.ts', find: 'if (c.amount_matches !== true || got !== want) {', replace: 'if (false /* MUTANT (R4) */) {' }],
+  },
+  {
+    name: '(R5) receipt signature check removed',
+    edits: [{ file: 'src/settlement.ts', find: "  if (!schnorrVerify(Buffer.from(ev.id, 'hex'), Buffer.from(ev.pubkey, 'hex'), Buffer.from(ev.sig, 'hex'))) {\n    return [{ code: 'receipt_invalid'", replace: "  if (false /* MUTANT (R5) */) {\n    return [{ code: 'receipt_invalid'" }],
+  },
+  {
+    name: '(R6) payee check removed',
+    edits: [{ file: 'src/settlement.ts', find: "if (c.payee_matches !== true || lc(c.observed_payee) !== cfg.payee) {", replace: 'if (false /* MUTANT (R6) */) {' }],
+  },
   // Optional required evidence: an independent signed verdict on the request (src/verdict.ts, test/11).
   {
     name: '(V1) evidence checks ignored: a configured gate permits without its evidence',

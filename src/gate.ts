@@ -42,6 +42,9 @@ import { isRecord, itemsAmountCheck, requestDigest, requestShapeProblems, sha256
 import type { PurchaseRequest } from './request.ts'
 import { runCheck, validateChecks } from './evidence.ts'
 import type { CheckedEvidence, EvidenceCheck } from './evidence.ts'
+import { settlementIdOf, settlementProblems, validateSettlementRequirement } from './settlement.ts'
+import type { SettlementRequirement } from './settlement.ts'
+import type { NostrEvent } from './verdict.ts'
 
 export interface DecideInput {
   request: PurchaseRequest
@@ -65,8 +68,9 @@ export const DEFAULT_INTENT_MAX_SKEW_MS = 30_000
 
 export type Outcome = 'placed' | 'failed' | 'unknown' | 'timeout'
 export type ReservationState = 'reserved' | 'committed' | 'released' | 'unresolved'
-/** Platform evidence for an outcome. This sandbox records it but cannot check it. */
-export interface Confirmation { platform_ref: string }
+/** Platform evidence for an outcome. This sandbox records platform_ref but cannot check it. When the gate has a
+ *  settlementReceipt requirement, a 'placed' outcome also carries payment_receipt, which it does check (src/settlement.ts). */
+export interface Confirmation { platform_ref: string; payment_receipt?: unknown }
 export interface OutcomeResult { ok: boolean; code: string; state?: ReservationState }
 
 export interface Reservation {
@@ -100,6 +104,9 @@ export interface GateConfig {
   /** Optional required evidence: a permit also needs every one of these checks to pass (src/evidence.ts). Off by default.
    *  The first adapter is verdictCheck in src/verdict.ts, an independent signed verdict on the exact request. */
   evidenceChecks?: EvidenceCheck[]
+  /** Optional: commit 'placed' only with a signed settlement receipt for the permitted payment (src/settlement.ts). Off by default.
+   *  Applies to reservations in the requirement's unit; one settlement commits at most one reservation. */
+  settlementReceipt?: SettlementRequirement
 }
 
 export const DEFAULT_RECOVERY_WINDOW_MS = 15 * 60_000
@@ -139,6 +146,13 @@ CREATE TABLE IF NOT EXISTS decisions (
   record TEXT NOT NULL,
   decided_at TEXT NOT NULL
 );
+-- One row per settlement a 'placed' outcome was committed with (settlementReceipt only): one payment, one order.
+CREATE TABLE IF NOT EXISTS settlements (
+  settlement_id TEXT PRIMARY KEY,
+  reservation_id TEXT NOT NULL UNIQUE,
+  receipt_event_id TEXT NOT NULL,
+  at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS revocations (
   delegation_id TEXT PRIMARY KEY,
   revoked_at TEXT NOT NULL,
@@ -163,8 +177,11 @@ const CHAIN_CODES: Record<string, string> = {
   REVOCATION_UNKNOWN: 'revocation_unknown',
 }
 
-const isConfirmation = (c: unknown): c is Confirmation =>
-  isRecord(c) && Object.keys(c).length === 1 && typeof c.platform_ref === 'string' && c.platform_ref.length > 0
+const isConfirmation = (c: unknown): c is Confirmation => {
+  if (!isRecord(c) || typeof c.platform_ref !== 'string' || c.platform_ref.length === 0) return false
+  const keys = Object.keys(c).sort()
+  return keys.length === 1 || (keys.length === 2 && keys[0] === 'payment_receipt' && keys[1] === 'platform_ref')
+}
 
 export class Gate {
   readonly db: DatabaseSync
@@ -175,6 +192,7 @@ export class Gate {
   readonly intentMaxAgeMs: number
   readonly intentMaxSkewMs: number
   readonly evidenceChecks: readonly EvidenceCheck[]
+  readonly settlement: Readonly<SettlementRequirement> | null
   /** Reservation ids that startup recovery moved to 'unresolved'. */
   recovered: string[] = []
   private readonly now: () => Date
@@ -187,6 +205,7 @@ export class Gate {
     this.raceWindowMs = c.raceWindowMs ?? 0
     this.intentMaxAgeMs = c.intentMaxAgeMs ?? DEFAULT_INTENT_MAX_AGE_MS
     this.evidenceChecks = validateChecks(c.evidenceChecks ?? [])
+    this.settlement = c.settlementReceipt === undefined ? null : validateSettlementRequirement(c.settlementReceipt)
     this.intentMaxSkewMs = c.intentMaxSkewMs ?? DEFAULT_INTENT_MAX_SKEW_MS
     this.now = c.now ?? (() => new Date())
     this.db = new DatabaseSync(c.dbPath)
@@ -218,6 +237,8 @@ export class Gate {
       stale: p("SELECT reservation_id FROM reservations WHERE state = 'reserved' AND created_ms <= ? ORDER BY created_ms"),
       revoked: p('SELECT revoked_at FROM revocations WHERE delegation_id = ?'),
       revoke: p('INSERT OR IGNORE INTO revocations (delegation_id, revoked_at, reason) VALUES (?, ?, ?)'),
+      getSettlement: p('SELECT reservation_id FROM settlements WHERE settlement_id = ?'),
+      putSettlement: p('INSERT INTO settlements (settlement_id, reservation_id, receipt_event_id, at) VALUES (?, ?, ?, ?)'),
     }
     this.q.held.setReadBigInts(true)
     this.q.byState.setReadBigInts(true)
@@ -526,11 +547,15 @@ export class Gate {
       if (!row) return { ok: false, code: 'not_found' }
       if (row.state !== 'reserved') return { ok: false, code: 'invalid_state', state: row.state }
       let next: ReservationState
-      if (outcome === 'placed') next = 'committed'
-      else if (outcome === 'failed') next = isConfirmation(confirmation) ? 'released' : 'unresolved'
+      if (outcome === 'placed') {
+        const refused = this.settlementRefusal(row, confirmation)
+        if (refused) return { ok: false, code: refused, state: row.state }
+        next = 'committed'
+      } else if (outcome === 'failed') next = isConfirmation(confirmation) ? 'released' : 'unresolved'
       else if (outcome === 'unknown' || outcome === 'timeout') next = 'unresolved'
       else return { ok: false, code: 'invalid_outcome' }
       this.transition(row, next, `outcome:${outcome}`, confirmation, at)
+      if (next === 'committed') this.recordSettlement(row, confirmation, at)
       return { ok: true, code: 'recorded', state: next }
     })
   }
@@ -544,12 +569,40 @@ export class Gate {
       if (!row) return { ok: false, code: 'not_found' }
       if (row.state !== 'unresolved') return { ok: false, code: 'invalid_state', state: row.state }
       let next: ReservationState
-      if (confirmed.outcome === 'placed') next = 'committed'
-      else if (confirmed.outcome === 'failed') next = 'released'
+      if (confirmed.outcome === 'placed') {
+        const refused = this.settlementRefusal(row, confirmed.confirmation)
+        if (refused) return { ok: false, code: refused, state: row.state }
+        next = 'committed'
+      } else if (confirmed.outcome === 'failed') next = 'released'
       else return { ok: false, code: 'invalid_outcome' }
       this.transition(row, next, `reconcile:${confirmed.outcome}`, confirmed.confirmation, at)
+      if (next === 'committed') this.recordSettlement(row, confirmed.confirmation, at)
       return { ok: true, code: 'reconciled', state: next }
     })
+  }
+
+  /** With a settlementReceipt requirement, the refusal code for committing this reservation as 'placed', or null.
+   *  Runs inside the outcome transaction: the receipt is checked against the permitted request the gate stored, and a
+   *  settlement already used for another reservation is refused. Reservations in another unit are not affected. */
+  private settlementRefusal(row: Reservation, confirmation: unknown): string | null {
+    const cfg = this.settlement
+    if (cfg === null || row.unit !== spendUnit(cfg.unit)) return null
+    if (!isConfirmation(confirmation) || confirmation.payment_receipt === undefined) return 'receipt_missing'
+    const req = this.q.getRequest.get(row.request_id) as { request_digest: string; decision_id: string } | undefined
+    if (!req) return 'receipt_permit_missing'
+    const permit = this.loadDecision(req.decision_id)
+    const problems = settlementProblems(confirmation.payment_receipt,
+      { action_ref: req.request_digest, agent_id: permit.receipt.subject_agent, amount_minor: row.amount_minor }, cfg)
+    if (problems.length > 0) return problems[0].code
+    const used = this.q.getSettlement.get(settlementIdOf(confirmation.payment_receipt as NostrEvent)) as { reservation_id: string } | undefined
+    if (used && used.reservation_id !== row.reservation_id) return 'receipt_settlement_reused'
+    return null
+  }
+
+  private recordSettlement(row: Reservation, confirmation: unknown, at: string): void {
+    if (this.settlement === null || row.unit !== spendUnit(this.settlement.unit) || !isConfirmation(confirmation)) return
+    const ev = confirmation.payment_receipt as NostrEvent
+    this.q.putSettlement.run(settlementIdOf(ev), row.reservation_id, ev.id, at)
   }
 
   private transition(row: Reservation, next: ReservationState, cause: string, evidence: unknown, at: string): void {

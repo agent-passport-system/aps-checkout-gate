@@ -12,6 +12,8 @@
 // Run: node src/server.ts <config.json>
 // config.json: {dbPath, gate: {id, role, publicKey, privateKey}, directory, port?, requireVerdict?: {verifierPubkey, proceedOn?, maxAgeMs?}}
 // requireVerdict configures the verdictCheck adapter (src/verdict.ts); its evidence goes in the body as evidence.verdict.
+// requireSettlementReceipt?: {issuerPubkey, network, asset, payee, unit, atomicPerMinor} is the gate's settlementReceipt (src/settlement.ts);
+// the receipt goes in /outcome or /reconcile as confirmation.payment_receipt. payerFor needs code, so it is not available from JSON.
 
 import { readFileSync } from 'node:fs'
 import { createServer } from 'node:http'
@@ -94,7 +96,7 @@ if (process.argv[1] && resolve(process.argv[1]) === import.meta.filename) {
   }
   const c = JSON.parse(readFileSync(path, 'utf8'))
   const gate = Gate.open({ dbPath: c.dbPath, gate: c.gate, directory: c.directory, recoveryWindowMs: c.recoveryWindowMs,
-    evidenceChecks: c.requireVerdict ? [verdictCheck(c.requireVerdict)] : undefined })
+    evidenceChecks: c.requireVerdict ? [verdictCheck(c.requireVerdict)] : undefined, settlementReceipt: c.requireSettlementReceipt })
   if (gate.recovered.length > 0) console.log(`startup recovery: ${gate.recovered.length} reservation(s) moved to unresolved`)
   const port = typeof c.port === 'number' ? c.port : 8787
   createGateServer(gate).listen(port, '127.0.0.1', () => console.log(`checkout gate on http://127.0.0.1:${port}`))

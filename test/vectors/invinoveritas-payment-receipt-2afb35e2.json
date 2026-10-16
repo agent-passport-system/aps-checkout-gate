@@ -1,0 +1,122 @@
+{
+ "note": "Real invinoveritas /payment-receipt events (BIP-340, NIP-01) for one real payment: Base mainnet USDC 1.00 (1000000 atomic), tx 0x2afb35e24a20fdee74c35937feb59b86358d45c8029a91d065d59825c3e7c4a7 (block 52345856, 2026-10-08), payer 0x161DbdD73D025E9aEdd4918a67c28e5bf9A87Fb9, payee 0xD34282184C5Dd34f3bBEf381d3A1E02B315ebb0A, the invinoveritas Exhibit 3 pilot. The orders are SYNTHETIC: each bound receipt was requested on 2026-10-16 with terms_hash = sha256:<that order's action_ref>, which the payer supplies (the receipt says terms_hash_source caller-supplied). bound_2 is the attack the gate must refuse: the same settlement re-bound to a second order.",
+ "requests": [
+  {
+   "request_id": "req-settlement-1",
+   "order_ref": "order-settlement-1",
+   "agent_id": "did:example:shopper",
+   "merchant_id": "example-store",
+   "items": [
+    {
+     "sku": "sku-1",
+     "quantity": 1,
+     "unit_price_minor": 100
+    }
+   ],
+   "amount_minor": 100,
+   "currency": "USD"
+  },
+  {
+   "request_id": "req-settlement-2",
+   "order_ref": "order-settlement-2",
+   "agent_id": "did:example:shopper",
+   "merchant_id": "example-store",
+   "items": [
+    {
+     "sku": "sku-1",
+     "quantity": 1,
+     "unit_price_minor": 100
+    }
+   ],
+   "amount_minor": 100,
+   "currency": "USD"
+  }
+ ],
+ "action_refs": [
+  "d9798105274fafeb05417c3d60ff53ea4667262fe29554f47b5bcac20df7ea06",
+  "0e60e2cbc06308ce01fde49beee749142096b5376365cc11ce5270b8bf413559"
+ ],
+ "issuer_pubkey": "6786e18a864893a900bd9858e650f67ccc3513f248fed374b591e2ff6922fbb7",
+ "network": "eip155:8453",
+ "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+ "payee": "0xD34282184C5Dd34f3bBEf381d3A1E02B315ebb0A",
+ "payer": "0x161DbdD73D025E9aEdd4918a67c28e5bf9A87Fb9",
+ "bound_1": {
+  "id": "81653f17d2d4974ddc3f185bf061f298db274cdc3a53ab7f20c65913479168a2",
+  "pubkey": "6786e18a864893a900bd9858e650f67ccc3513f248fed374b591e2ff6922fbb7",
+  "created_at": 1792113420,
+  "kind": 30078,
+  "tags": [
+   [
+    "d",
+    "invinoveritas-proof-proof-1792113420-775a5838"
+   ],
+   [
+    "t",
+    "invinoveritas"
+   ],
+   [
+    "t",
+    "proof"
+   ],
+   [
+    "schema",
+    "invinoveritas.payment_receipt.v1"
+   ]
+  ],
+  "content": "{\"amount_matches\":true,\"amount_unit\":\"atomic units of asset (USDC: 6 decimals)\",\"asset\":\"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\",\"authorization_used_on_chain\":true,\"authorization_valid_before\":\"1791481607\",\"checked_at\":1792113420,\"conformance_suite\":\"https://github.com/babyblueviper1/preaction-governance-conformance\",\"denial_code\":\"paid_no_output_recorded\",\"denial_codes\":[\"paid_no_output_recorded\"],\"denial_reason\":null,\"endpoint\":null,\"endpoint_source\":\"none: the verdict bound no endpoint (a direct transfer)\",\"expected_amount\":\"1000000\",\"facilitator_verdict\":{\"allows_payment\":true,\"decision_ref\":\"sha256:b1a8be58323f5b5ac0c5bf3d6da21a647399dcf074dc6baf6e870f7bf80f0e95\",\"issuer\":\"invinoveritas\",\"verdict\":\"approve_with_concerns\",\"verdict_event_id\":\"a5321b7db8ca0b2ac106a39f5cdef4fb1669d1e9c4d9d621629a2281af019d19\",\"verified_at\":1791481056},\"idempotency_key\":\"0xb1a8be58323f5b5ac0c5bf3d6da21a647399dcf074dc6baf6e870f7bf80f0e95\",\"idempotency_rule\":\"EIP-3009 nonce = the verdict's decision_ref. Retry only with this same nonce: the token settles one authorization at most once, so a retry cannot double-pay.\",\"independent_nodes\":[\"https://invinoveritas-castra.babyblueviper.workers.dev/verify\",\"https://babyblueviper1--2aba75da693711f185891607ee4eb77e.web.val.run\"],\"issuer_key_id\":\"bip340:6786e18a864893a900bd9858e650f67ccc3513f248fed374b591e2ff6922fbb7\",\"job_rule\":\"the payment settled but no output hash was recorded (a possible ghost result): do not authorize a new payment for the same job; ask the provider to re-deliver citing settlement_id, and if it requires payment again, retry only with this idempotency_key, which cannot settle twice.\",\"job_state\":\"paid_no_output_recorded\",\"key_id\":\"6786e18a864893a900bd9858e650f67ccc3513f248fed374b591e2ff6922fbb7\",\"max_amount\":\"1000000\",\"network\":\"eip155:8453\",\"observed_amount\":\"1000000\",\"observed_payee\":\"0xd34282184c5dd34f3bbef381d3a1e02b315ebb0a\",\"observed_source\":\"the settlement tx's token Transfer logs from the payer\",\"output_hash\":null,\"output_hash_source\":null,\"payee\":\"0xD34282184C5Dd34f3bBEf381d3A1E02B315ebb0A\",\"payee_matches\":true,\"payer\":\"0x161DbdD73D025E9aEdd4918a67c28e5bf9A87Fb9\",\"platform\":\"invinoveritas\",\"replay_nonce\":\"0xb1a8be58323f5b5ac0c5bf3d6da21a647399dcf074dc6baf6e870f7bf80f0e95\",\"retry_state\":\"paid_do_not_retry\",\"retry_until\":1791481607,\"schema\":\"invinoveritas.payment_receipt.v1\",\"settlement_id\":\"0x2afb35e24a20fdee74c35937feb59b86358d45c8029a91d065d59825c3e7c4a7\",\"settlement_status\":\"valid\",\"terms_hash\":\"sha256:d9798105274fafeb05417c3d60ff53ea4667262fe29554f47b5bcac20df7ea06\",\"terms_hash_conflict\":false,\"terms_hash_source\":\"caller-supplied (not bound by the verdict)\",\"verifier_keys\":\"https://api.babyblueviper.com/.well-known/verifier-keys.json\",\"verifier_pubkey\":\"6786e18a864893a900bd9858e650f67ccc3513f248fed374b591e2ff6922fbb7\",\"verifier_url\":\"https://api.babyblueviper.com/verify-proof\",\"verify_how\":\"Easiest: install the offline verifier above and recompute locally. Or POST this proof's signed `event` to verify_url (or an independent_node), OR run NIP-01 yourself: recompute the Nostr event id = sha256([0,pubkey,created_at,kind,tags,content]), verify the schnorr signature against verifier_pubkey. valid \u21d2 invinoveritas issued this, untampered. No trust required.\",\"verify_offline\":\"npm i invinoveritas-verify  \u00b7  pip install invinoveritas-verify  \u2014 recompute this proof on your own machine against verifier_pubkey; you never have to call us.\",\"verify_url\":\"https://api.babyblueviper.com/verify-proof\",\"wallet_approval\":{\"domain_separator\":\"0x02fa7265e7c5d81118673727957699e4d68f74cd74b7db77da710fe8a2c7834f\",\"primary_type\":\"TransferWithAuthorization\",\"provided\":true,\"recovered\":\"0x161DbdD73D025E9aEdd4918a67c28e5bf9A87Fb9\",\"recovers_to_payer\":true,\"signature\":\"0x76be89495fa01061da96b7780525b6e29e5d76d26e0b32186c7169803394905a73bbdde67aa34fedef445a51ad42ca8162373e726d9201bcc43765a5425ac3951c\",\"signed_fields\":{\"from\":\"0x161DbdD73D025E9aEdd4918a67c28e5bf9A87Fb9\",\"nonce\":\"0xb1a8be58323f5b5ac0c5bf3d6da21a647399dcf074dc6baf6e870f7bf80f0e95\",\"to\":\"0xD34282184C5Dd34f3bBEf381d3A1E02B315ebb0A\",\"validAfter\":\"1791480947\",\"validBefore\":\"1791481607\",\"value\":\"1000000\"}}}",
+  "sig": "3b95eaf7d9df612c0b1e3fb0777178375c5e1f877b86d345efe67e72eed87b7d426ade9d0aa2dfafd86c34a01b4d46a69cb27ac4cc60270b0596b7a524418ad1"
+ },
+ "bound_2": {
+  "id": "a88a0976b21cabe1b1f7280b20a8291ef5885c4cb788dc0f7727ef1f8714d10d",
+  "pubkey": "6786e18a864893a900bd9858e650f67ccc3513f248fed374b591e2ff6922fbb7",
+  "created_at": 1792113532,
+  "kind": 30078,
+  "tags": [
+   [
+    "d",
+    "invinoveritas-proof-proof-1792113532-e74f94d3"
+   ],
+   [
+    "t",
+    "invinoveritas"
+   ],
+   [
+    "t",
+    "proof"
+   ],
+   [
+    "schema",
+    "invinoveritas.payment_receipt.v1"
+   ]
+  ],
+  "content": "{\"amount_matches\":true,\"amount_unit\":\"atomic units of asset (USDC: 6 decimals)\",\"asset\":\"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\",\"authorization_used_on_chain\":true,\"authorization_valid_before\":\"1791481607\",\"checked_at\":1792113532,\"conformance_suite\":\"https://github.com/babyblueviper1/preaction-governance-conformance\",\"denial_code\":\"paid_no_output_recorded\",\"denial_codes\":[\"paid_no_output_recorded\"],\"denial_reason\":null,\"endpoint\":null,\"endpoint_source\":\"none: the verdict bound no endpoint (a direct transfer)\",\"expected_amount\":\"1000000\",\"facilitator_verdict\":{\"allows_payment\":true,\"decision_ref\":\"sha256:b1a8be58323f5b5ac0c5bf3d6da21a647399dcf074dc6baf6e870f7bf80f0e95\",\"issuer\":\"invinoveritas\",\"verdict\":\"approve_with_concerns\",\"verdict_event_id\":\"a5321b7db8ca0b2ac106a39f5cdef4fb1669d1e9c4d9d621629a2281af019d19\",\"verified_at\":1791481056},\"idempotency_key\":\"0xb1a8be58323f5b5ac0c5bf3d6da21a647399dcf074dc6baf6e870f7bf80f0e95\",\"idempotency_rule\":\"EIP-3009 nonce = the verdict's decision_ref. Retry only with this same nonce: the token settles one authorization at most once, so a retry cannot double-pay.\",\"independent_nodes\":[\"https://invinoveritas-castra.babyblueviper.workers.dev/verify\",\"https://babyblueviper1--2aba75da693711f185891607ee4eb77e.web.val.run\"],\"issuer_key_id\":\"bip340:6786e18a864893a900bd9858e650f67ccc3513f248fed374b591e2ff6922fbb7\",\"job_rule\":\"the payment settled but no output hash was recorded (a possible ghost result): do not authorize a new payment for the same job; ask the provider to re-deliver citing settlement_id, and if it requires payment again, retry only with this idempotency_key, which cannot settle twice.\",\"job_state\":\"paid_no_output_recorded\",\"key_id\":\"6786e18a864893a900bd9858e650f67ccc3513f248fed374b591e2ff6922fbb7\",\"max_amount\":\"1000000\",\"network\":\"eip155:8453\",\"observed_amount\":\"1000000\",\"observed_payee\":\"0xd34282184c5dd34f3bbef381d3a1e02b315ebb0a\",\"observed_source\":\"the settlement tx's token Transfer logs from the payer\",\"output_hash\":null,\"output_hash_source\":null,\"payee\":\"0xD34282184C5Dd34f3bBEf381d3A1E02B315ebb0A\",\"payee_matches\":true,\"payer\":\"0x161DbdD73D025E9aEdd4918a67c28e5bf9A87Fb9\",\"platform\":\"invinoveritas\",\"replay_nonce\":\"0xb1a8be58323f5b5ac0c5bf3d6da21a647399dcf074dc6baf6e870f7bf80f0e95\",\"retry_state\":\"paid_do_not_retry\",\"retry_until\":1791481607,\"schema\":\"invinoveritas.payment_receipt.v1\",\"settlement_id\":\"0x2afb35e24a20fdee74c35937feb59b86358d45c8029a91d065d59825c3e7c4a7\",\"settlement_status\":\"valid\",\"terms_hash\":\"sha256:0e60e2cbc06308ce01fde49beee749142096b5376365cc11ce5270b8bf413559\",\"terms_hash_conflict\":false,\"terms_hash_source\":\"caller-supplied (not bound by the verdict)\",\"verifier_keys\":\"https://api.babyblueviper.com/.well-known/verifier-keys.json\",\"verifier_pubkey\":\"6786e18a864893a900bd9858e650f67ccc3513f248fed374b591e2ff6922fbb7\",\"verifier_url\":\"https://api.babyblueviper.com/verify-proof\",\"verify_how\":\"Easiest: install the offline verifier above and recompute locally. Or POST this proof's signed `event` to verify_url (or an independent_node), OR run NIP-01 yourself: recompute the Nostr event id = sha256([0,pubkey,created_at,kind,tags,content]), verify the schnorr signature against verifier_pubkey. valid \u21d2 invinoveritas issued this, untampered. No trust required.\",\"verify_offline\":\"npm i invinoveritas-verify  \u00b7  pip install invinoveritas-verify  \u2014 recompute this proof on your own machine against verifier_pubkey; you never have to call us.\",\"verify_url\":\"https://api.babyblueviper.com/verify-proof\",\"wallet_approval\":{\"domain_separator\":\"0x02fa7265e7c5d81118673727957699e4d68f74cd74b7db77da710fe8a2c7834f\",\"primary_type\":\"TransferWithAuthorization\",\"provided\":true,\"recovered\":\"0x161DbdD73D025E9aEdd4918a67c28e5bf9A87Fb9\",\"recovers_to_payer\":true,\"signature\":\"0x76be89495fa01061da96b7780525b6e29e5d76d26e0b32186c7169803394905a73bbdde67aa34fedef445a51ad42ca8162373e726d9201bcc43765a5425ac3951c\",\"signed_fields\":{\"from\":\"0x161DbdD73D025E9aEdd4918a67c28e5bf9A87Fb9\",\"nonce\":\"0xb1a8be58323f5b5ac0c5bf3d6da21a647399dcf074dc6baf6e870f7bf80f0e95\",\"to\":\"0xD34282184C5Dd34f3bBEf381d3A1E02B315ebb0A\",\"validAfter\":\"1791480947\",\"validBefore\":\"1791481607\",\"value\":\"1000000\"}}}",
+  "sig": "f4c30262794799dc9603ac98129eb73aaa756de574c0426602dfcb2919a0e1964cf8abe42e2f9e5130a80eff359ee62fb40f55d44097c31344672f8c5fdf20e5"
+ },
+ "unbound": {
+  "id": "363f93565b3437c55f052d930082b7ee070aaeb9493ef60e3ec7ab3a56e7a14a",
+  "pubkey": "6786e18a864893a900bd9858e650f67ccc3513f248fed374b591e2ff6922fbb7",
+  "created_at": 1792113330,
+  "kind": 30078,
+  "tags": [
+   [
+    "d",
+    "invinoveritas-proof-proof-1792113330-cb64c264"
+   ],
+   [
+    "t",
+    "invinoveritas"
+   ],
+   [
+    "t",
+    "proof"
+   ],
+   [
+    "schema",
+    "invinoveritas.payment_receipt.v1"
+   ]
+  ],
+  "content": "{\"amount_matches\":true,\"amount_unit\":\"atomic units of asset (USDC: 6 decimals)\",\"asset\":\"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\",\"authorization_used_on_chain\":true,\"authorization_valid_before\":\"1791481607\",\"checked_at\":1792113330,\"conformance_suite\":\"https://github.com/babyblueviper1/preaction-governance-conformance\",\"denial_code\":\"paid_no_output_recorded\",\"denial_codes\":[\"paid_no_output_recorded\"],\"denial_reason\":null,\"endpoint\":null,\"endpoint_source\":\"none: the verdict bound no endpoint (a direct transfer)\",\"expected_amount\":\"1000000\",\"facilitator_verdict\":{\"allows_payment\":true,\"decision_ref\":\"sha256:b1a8be58323f5b5ac0c5bf3d6da21a647399dcf074dc6baf6e870f7bf80f0e95\",\"issuer\":\"invinoveritas\",\"verdict\":\"approve_with_concerns\",\"verdict_event_id\":\"a5321b7db8ca0b2ac106a39f5cdef4fb1669d1e9c4d9d621629a2281af019d19\",\"verified_at\":1791481056},\"idempotency_key\":\"0xb1a8be58323f5b5ac0c5bf3d6da21a647399dcf074dc6baf6e870f7bf80f0e95\",\"idempotency_rule\":\"EIP-3009 nonce = the verdict's decision_ref. Retry only with this same nonce: the token settles one authorization at most once, so a retry cannot double-pay.\",\"independent_nodes\":[\"https://invinoveritas-castra.babyblueviper.workers.dev/verify\",\"https://babyblueviper1--2aba75da693711f185891607ee4eb77e.web.val.run\"],\"issuer_key_id\":\"bip340:6786e18a864893a900bd9858e650f67ccc3513f248fed374b591e2ff6922fbb7\",\"job_rule\":\"the payment settled but no output hash was recorded (a possible ghost result): do not authorize a new payment for the same job; ask the provider to re-deliver citing settlement_id, and if it requires payment again, retry only with this idempotency_key, which cannot settle twice.\",\"job_state\":\"paid_no_output_recorded\",\"key_id\":\"6786e18a864893a900bd9858e650f67ccc3513f248fed374b591e2ff6922fbb7\",\"max_amount\":\"1000000\",\"network\":\"eip155:8453\",\"observed_amount\":\"1000000\",\"observed_payee\":\"0xd34282184c5dd34f3bbef381d3a1e02b315ebb0a\",\"observed_source\":\"the settlement tx's token Transfer logs from the payer\",\"output_hash\":null,\"output_hash_source\":null,\"payee\":\"0xD34282184C5Dd34f3bBEf381d3A1E02B315ebb0A\",\"payee_matches\":true,\"payer\":\"0x161DbdD73D025E9aEdd4918a67c28e5bf9A87Fb9\",\"platform\":\"invinoveritas\",\"replay_nonce\":\"0xb1a8be58323f5b5ac0c5bf3d6da21a647399dcf074dc6baf6e870f7bf80f0e95\",\"retry_state\":\"paid_do_not_retry\",\"retry_until\":1791481607,\"schema\":\"invinoveritas.payment_receipt.v1\",\"settlement_id\":\"0x2afb35e24a20fdee74c35937feb59b86358d45c8029a91d065d59825c3e7c4a7\",\"settlement_status\":\"valid\",\"terms_hash\":null,\"terms_hash_conflict\":false,\"terms_hash_source\":\"none: no terms hash bound or supplied\",\"verifier_keys\":\"https://api.babyblueviper.com/.well-known/verifier-keys.json\",\"verifier_pubkey\":\"6786e18a864893a900bd9858e650f67ccc3513f248fed374b591e2ff6922fbb7\",\"verifier_url\":\"https://api.babyblueviper.com/verify-proof\",\"verify_how\":\"Easiest: install the offline verifier above and recompute locally. Or POST this proof's signed `event` to verify_url (or an independent_node), OR run NIP-01 yourself: recompute the Nostr event id = sha256([0,pubkey,created_at,kind,tags,content]), verify the schnorr signature against verifier_pubkey. valid \u21d2 invinoveritas issued this, untampered. No trust required.\",\"verify_offline\":\"npm i invinoveritas-verify  \u00b7  pip install invinoveritas-verify  \u2014 recompute this proof on your own machine against verifier_pubkey; you never have to call us.\",\"verify_url\":\"https://api.babyblueviper.com/verify-proof\",\"wallet_approval\":{\"domain_separator\":\"0x02fa7265e7c5d81118673727957699e4d68f74cd74b7db77da710fe8a2c7834f\",\"primary_type\":\"TransferWithAuthorization\",\"provided\":true,\"recovered\":\"0x161DbdD73D025E9aEdd4918a67c28e5bf9A87Fb9\",\"recovers_to_payer\":true,\"signature\":\"0x76be89495fa01061da96b7780525b6e29e5d76d26e0b32186c7169803394905a73bbdde67aa34fedef445a51ad42ca8162373e726d9201bcc43765a5425ac3951c\",\"signed_fields\":{\"from\":\"0x161DbdD73D025E9aEdd4918a67c28e5bf9A87Fb9\",\"nonce\":\"0xb1a8be58323f5b5ac0c5bf3d6da21a647399dcf074dc6baf6e870f7bf80f0e95\",\"to\":\"0xD34282184C5Dd34f3bBEf381d3A1E02B315ebb0A\",\"validAfter\":\"1791480947\",\"validBefore\":\"1791481607\",\"value\":\"1000000\"}}}",
+  "sig": "3de0cde54a661d2d08d2bfb23db9c72290e46aa8643aafddca23b6dab5fa9db0c3cc6d2a4390d47a2642d657449fe79c3be0bc9cc47576b802ee9fb0d238f6b9"
+ }
+}
