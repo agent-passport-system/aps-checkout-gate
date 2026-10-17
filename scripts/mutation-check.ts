@@ -40,6 +40,14 @@ const mutants: Mutant[] = [
     name: '(R6) payee check removed',
     edits: [{ file: 'src/settlement.ts', find: "if (c.payee_matches !== true || lc(c.observed_payee) !== cfg.payee) {", replace: 'if (false /* MUTANT (R6) */) {' }],
   },
+  {
+    name: "(R7) a receipt-bearing 'failed' report releases the budget",
+    edits: [{ file: GATE, find: "next = isReleaseConfirmation(confirmation) ? 'released' : 'unresolved'", replace: "next = isConfirmation(confirmation) /* MUTANT (R7) */ ? 'released' : 'unresolved'" }],
+  },
+  {
+    name: "(R8) reconcile accepts a receipt-bearing 'failed' confirmation as a release proof",
+    edits: [{ file: GATE, find: "if (confirmed.outcome === 'failed' && !isReleaseConfirmation(confirmed.confirmation)) return", replace: "if (false /* MUTANT (R8) */) return" }],
+  },
   // Optional required evidence: an independent signed verdict on the request (src/verdict.ts, test/11).
   {
     name: '(V1) evidence checks ignored: a configured gate permits without its evidence',
@@ -210,7 +218,7 @@ const mutants: Mutant[] = [
   },
   {
     name: '(7) a failure report without platform confirmation releases the budget',
-    edits: [{ file: GATE, find: "next = isConfirmation(confirmation) ? 'released' : 'unresolved'", replace: "next = 'released' // MUTANT (7)" }],
+    edits: [{ file: GATE, find: "next = isReleaseConfirmation(confirmation) ? 'released' : 'unresolved'", replace: "next = 'released' // MUTANT (7)" }],
   },
   {
     name: '(8) revocation list ignored',
