@@ -128,3 +128,25 @@ test('17. a malformed requirement fails when the gate opens', t => {
     assert.throws(() => setup(t, { settlementReceipt: bad as SettlementRequirement }))
   }
 })
+
+// Review of fd5daf8 (aps-checkout-gate#6): a payment receipt says money moved, so it is never a release proof for a
+// 'failed' order. On main (7954ae7) such a confirmation left the report unresolved and refused the reconciliation;
+// both paths keep that behaviour here, with the settlementReceipt requirement off (the default gate) and on.
+for (const [label, extra] of [['off', {}], ['on', { settlementReceipt: REQ }]] as const) {
+  test(`17. reportOutcome: a receipt-bearing 'failed' confirmation does not release the reservation (requirement ${label})`, t => {
+    const { gate, permit } = setup(t, extra)
+    const id = permit(V.requests[0])
+    // unresolved, not released: the reservation keeps holding its amount until a reconciliation decides it
+    assert.deepEqual(gate.reportOutcome(id, 'failed', conf(V.bound_1)), { ok: true, code: 'recorded', state: 'unresolved' })
+    // a plain platform_ref confirmation still releases a failed order, as before
+    assert.equal(gate.reportOutcome(permit(V.requests[1]), 'failed', conf()).state, 'released')
+  })
+
+  test(`17. reconcile: a receipt-bearing 'failed' confirmation is refused and the reservation stays unresolved (requirement ${label})`, t => {
+    const { gate, permit } = setup(t, extra)
+    const id = permit(V.requests[0])
+    assert.equal(gate.reportOutcome(id, 'unknown').state, 'unresolved')
+    assert.deepEqual(gate.reconcile(id, { outcome: 'failed', confirmation: conf(V.bound_1) }), { ok: false, code: 'confirmation_required' })
+    assert.deepEqual(gate.reconcile(id, { outcome: 'failed', confirmation: conf() }), { ok: true, code: 'reconciled', state: 'released' })
+  })
+}

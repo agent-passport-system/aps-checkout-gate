@@ -32,7 +32,7 @@ export interface SettlementRequirement {
   asset: string
   /** The store's receiving address. */
   payee: string
-  /** The currency these rules apply to (ISO 4217, as in the grant; the gate compares it as spendUnit(unit)). Other units commit without a receipt. */
+  /** The currency these rules apply to: three upper case letters, as in the grant (ISO 4217 membership is not checked); the gate compares it as spendUnit(unit). Other units commit without a receipt. */
   unit: string
   /** Atomic token units per minor unit of `unit`: 10000 for USD cents paid in USDC (6 decimals). */
   atomicPerMinor: number
@@ -58,7 +58,7 @@ export function validateSettlementRequirement(cfg: unknown): Readonly<Settlement
   if (typeof cfg.network !== 'string' || !/^[-a-z0-9]{3,8}:[-_a-zA-Z0-9]{1,32}$/.test(cfg.network)) throw new Error('network must be a CAIP-2 id')
   if (typeof cfg.asset !== 'string' || !ADDR.test(cfg.asset)) throw new Error('asset must be a 0x address')
   if (typeof cfg.payee !== 'string' || !ADDR.test(cfg.payee)) throw new Error('payee must be a 0x address')
-  if (typeof cfg.unit !== 'string' || !/^[A-Z]{3}$/.test(cfg.unit)) throw new Error('unit must be an ISO 4217 code')
+  if (typeof cfg.unit !== 'string' || !/^[A-Z]{3}$/.test(cfg.unit)) throw new Error('unit must be three upper case letters (ISO 4217 membership is not checked)')
   const k = cfg.atomicPerMinor
   if (typeof k !== 'number' || !Number.isSafeInteger(k) || k <= 0) throw new Error('atomicPerMinor must be a positive safe integer')
   if (cfg.payerFor !== undefined && typeof cfg.payerFor !== 'function') throw new Error('payerFor must be a function')
@@ -121,7 +121,7 @@ export function settlementProblems(ev: unknown, ctx: SettlementContext, cfg: Rea
   }
   const wa = c.wallet_approval
   if (!isRecord(wa) || wa.recovers_to_payer !== true) {
-    problems.push({ code: 'receipt_wallet_unapproved', message: "the payer's EIP-3009 signature was not provided or does not recover to the payer" })
+    problems.push({ code: 'receipt_wallet_unapproved', message: "the issuer does not report that the payer's EIP-3009 signature recovers to the payer (the gate checks that signed assertion; it does not recover the signature itself)" })
   }
   if (cfg.payerFor) {
     const expected = cfg.payerFor(ctx.agent_id)

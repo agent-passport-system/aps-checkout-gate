@@ -183,6 +183,12 @@ const isConfirmation = (c: unknown): c is Confirmation => {
   return keys.length === 1 || (keys.length === 2 && keys[0] === 'payment_receipt' && keys[1] === 'platform_ref')
 }
 
+/** A confirmation that can release a reservation: platform_ref only. A payment receipt says money moved, so a
+ *  receipt-bearing 'failed' confirmation is not accepted as a release proof: it leaves the budget held (unresolved)
+ *  for reconciliation, exactly as main does, with or without a settlementReceipt requirement. */
+const isReleaseConfirmation = (c: unknown): c is Confirmation =>
+  isConfirmation(c) && (c as Confirmation).payment_receipt === undefined
+
 export class Gate {
   readonly db: DatabaseSync
   readonly gate: Party
@@ -551,7 +557,7 @@ export class Gate {
         const refused = this.settlementRefusal(row, confirmation)
         if (refused) return { ok: false, code: refused, state: row.state }
         next = 'committed'
-      } else if (outcome === 'failed') next = isConfirmation(confirmation) ? 'released' : 'unresolved'
+      } else if (outcome === 'failed') next = isReleaseConfirmation(confirmation) ? 'released' : 'unresolved'
       else if (outcome === 'unknown' || outcome === 'timeout') next = 'unresolved'
       else return { ok: false, code: 'invalid_outcome' }
       this.transition(row, next, `outcome:${outcome}`, confirmation, at)
@@ -563,6 +569,8 @@ export class Gate {
   /** The only way out of 'unresolved'. Needs platform confirmation. */
   reconcile(reservationId: string, confirmed: { outcome: 'placed' | 'failed'; confirmation: Confirmation }): OutcomeResult {
     if (!isRecord(confirmed) || !isConfirmation(confirmed.confirmation)) return { ok: false, code: 'confirmation_required' }
+    // a payment receipt is never evidence that an order failed: refused, the reservation stays unresolved (as on main)
+    if (confirmed.outcome === 'failed' && !isReleaseConfirmation(confirmed.confirmation)) return { ok: false, code: 'confirmation_required' }
     const at = this.now().toISOString()
     return this.tx(() => {
       const row = this.q.getReservation.get(reservationId) as Reservation | undefined

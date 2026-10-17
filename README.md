@@ -194,7 +194,7 @@ content, which reports what the issuer read from the chain when it signed.
 | `network` and `asset` are the configured ones | `receipt_network_mismatch`, `receipt_asset_mismatch` |
 | the observed transfer paid the configured `payee` | `receipt_payee_mismatch` |
 | the observed amount is `amount_minor x atomicPerMinor` | `receipt_amount_mismatch` |
-| the payer's EIP-3009 signature recovers to the payer | `receipt_wallet_unapproved` |
+| the issuer reports that the payer's EIP-3009 signature recovers to the payer (the gate checks that signed assertion; it does not recover the signature itself) | `receipt_wallet_unapproved` |
 | with `payerFor`, the payer is the wallet configured for this agent | `receipt_payer_mismatch` |
 | its settlement has not already committed another reservation | `receipt_settlement_reused` |
 
