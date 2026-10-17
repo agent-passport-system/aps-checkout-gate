@@ -165,6 +165,52 @@ PriorSeal artifact. `priorsealLimitCheck` remains only as a compatibility alias
 for the initial PR API and has the same local-only meaning. A real store must
 provide its separate cap before this can be used beyond the sandbox.
 
+### Optional: a settlement receipt on `placed`
+
+`settlementReceipt` in `src/settlement.ts` makes `placed` depend on proof that the permitted payment settled (#199, the settlement
+row). Off by default. With it, `reportOutcome(id, 'placed', confirmation)` and `reconcile(id, {outcome: 'placed', confirmation})`
+commit a reservation in the configured currency only when `confirmation.payment_receipt` is a signed payment receipt
+(invinoveritas `/payment-receipt`, a NIP-01 event signed with BIP-340 whose content is the receipt) for an EIP-3009 payment.
+Otherwise they return the refusal code and the reservation stays where it was. `failed`, `unknown`, `timeout` and other
+currencies are unchanged.
+
+```ts
+Gate.open({ ...config, settlementReceipt: { issuerPubkey: '<issuer BIP-340 x-only key>', network: 'eip155:8453',
+  asset: '<USDC address>', payee: '<the store address>', unit: 'USD', atomicPerMinor: 10_000 } })
+gate.reportOutcome(reservation_id, 'placed', { platform_ref, payment_receipt })
+```
+
+The server takes the same as `requireSettlementReceipt` in its config. Every check is offline: the gate reads only the signed
+content, which reports what the issuer read from the chain when it signed.
+
+| a receipt commits `placed` only if | refusal code |
+| --- | --- |
+| it is present | `receipt_missing` |
+| it is signed by the configured issuer key | `receipt_untrusted_key` |
+| the NIP-01 id recomputes, the BIP-340 signature verifies, the content is a `invinoveritas.payment_receipt.v1` object | `receipt_invalid` |
+| its `terms_hash` is `"sha256:" + action_ref` of the permitted request | `receipt_not_bound` |
+| `retry_state` is `paid_do_not_retry` | `receipt_not_paid` |
+| the authorization was used on chain and `settlement_id` was proven to be that payment (`settlement_status` valid) | `receipt_settlement_unproven` |
+| `network` and `asset` are the configured ones | `receipt_network_mismatch`, `receipt_asset_mismatch` |
+| the observed transfer paid the configured `payee` | `receipt_payee_mismatch` |
+| the observed amount is `amount_minor x atomicPerMinor` | `receipt_amount_mismatch` |
+| the issuer reports that the payer's EIP-3009 signature recovers to the payer (the gate checks that signed assertion; it does not recover the signature itself) | `receipt_wallet_unapproved` |
+| with `payerFor`, the payer is the wallet configured for this agent | `receipt_payer_mismatch` |
+| its settlement has not already committed another reservation | `receipt_settlement_reused` |
+
+The last row matters because the payer supplies `terms_hash` when it asks for the receipt, so the binding on its own is the
+payer's claim, and a receipt can be requested again for the same payment with another order's digest. The gate records each
+settlement it commits with (table `settlements`) so one payment commits one order.
+
+`test/17-settlement-receipt.test.ts` uses three real receipts for one real payment (Base mainnet USDC 1.00, tx `0x2afb35e2...`,
+`test/vectors/invinoveritas-payment-receipt-2afb35e2.json`): two bound to two synthetic $1.00 orders and one unbound. The first
+commits its order, the second is refused as `receipt_settlement_reused`, the unbound one as `receipt_not_bound`. The orders,
+keys and grants are synthetic.
+
+A passing receipt establishes that the configured issuer signed that this payer's authorization settled on chain as the
+expected amount of the configured asset to this store. It does not establish delivery, or that the payer meant this order
+beyond the `terms_hash` it supplied.
+
 ## Run it
 
 Needs Node 24. Node runs the TypeScript directly, there is no build step, and state lives in the built in `node:sqlite`. The only runtime dependency is `agent-passport-system` pinned to 7.2.1. TypeScript 5.9.3 and `@types/node` 24.10.1 are pinned development dependencies used only by `npm run typecheck`.
