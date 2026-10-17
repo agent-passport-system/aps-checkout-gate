@@ -105,6 +105,31 @@ const mutants: Mutant[] = [
     name: '(H7) check not bound to its object: a class-based adapter loses its this',
     edits: [{ file: 'src/evidence.ts', find: "check: (check as EvidenceCheck['check']).bind(c) }", replace: "check: check as EvidenceCheck['check'] /* MUTANT (H7) */ }" }],
   },
+  // Local store per-order cap adapter (src/priorseal-limit.ts, test/15).
+  {
+    name: '(S1) store-cap merchant match removed',
+    edits: [{ file: 'src/priorseal-limit.ts', find: 'if (request.merchant_id !== cap.merchant_id) {', replace: 'if (false /* MUTANT (S1) */) {' }],
+  },
+  {
+    name: '(S2) store-cap currency match removed',
+    edits: [{ file: 'src/priorseal-limit.ts', find: 'if (request.currency !== cap.currency) {', replace: 'if (false /* MUTANT (S2) */) {' }],
+  },
+  {
+    name: '(S3) store per-order amount cap removed',
+    edits: [{ file: 'src/priorseal-limit.ts', find: 'if (request.amount_minor > cap.max_amount_minor) {', replace: 'if (false /* MUTANT (S3) */) {' }],
+  },
+  {
+    name: '(S4) store cap snapshot equality removed',
+    edits: [{ file: 'src/priorseal-limit.ts', find: 'if (!isCapSnapshot(evidence) || !sameCap(evidence, cap)) {', replace: 'if (false /* MUTANT (S4) */) {' }],
+  },
+  {
+    name: '(S5) cap omitted from the store-cap evidence-id preimage',
+    edits: [{ file: 'src/priorseal-limit.ts', find: '    cap,', replace: '    // MUTANT (S5): cap omitted' }],
+  },
+  {
+    name: '(S6) exact request action_ref omitted from the store-cap evidence-id preimage',
+    edits: [{ file: 'src/priorseal-limit.ts', find: '    action_ref: actionRef,', replace: '    // MUTANT (S6): action_ref omitted' }],
+  },
   {
     name: '(D1) a refusal without a usable delegation id cites an invalid delegation_ref again (decide() throws)',
     edits: [{ file: GATE, find: 'delegation_ref: grantId !== null && /^sha256:[0-9a-f]{64}$/.test(grantId) ? grantId : NO_DELEGATION_REF,', replace: "delegation_ref: grantId ?? 'no-delegation', // MUTANT (D1)" }],
